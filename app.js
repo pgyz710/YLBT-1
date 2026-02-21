@@ -21,84 +21,17 @@ const App = {
         { question: '月亮为什么会变圆变缺？', time: '前天 09:15' }
     ],
     currentQuestion: '',
-    recognition: null,
+    currentAnswer: '',
     speechSynthesis: window.speechSynthesis,
     mediaStream: null,
     capturedPhoto: null,
+    isRecording: false,
+    recognition: null,
     
     init() {
-        this.initSpeechRecognition();
         this.bindEvents();
         this.showPage('home');
         this.updateGreeting();
-    },
-    
-    initSpeechRecognition() {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (SpeechRecognition) {
-            this.recognition = new SpeechRecognition();
-            this.recognition.continuous = false;
-            this.recognition.interimResults = true;
-            this.recognition.lang = 'zh-CN';
-            this.recognition.maxAlternatives = 1;
-            
-            this.recognition.onresult = (event) => {
-                const result = event.results[event.results.length - 1];
-                if (result.isFinal) {
-                    this.currentQuestion = result[0].transcript;
-                }
-            };
-            
-            this.recognition.onerror = (event) => {
-                console.error('语音识别错误:', event.error);
-                let errorMsg = '语音识别出错';
-                switch(event.error) {
-                    case 'no-speech':
-                        errorMsg = '没有检测到语音，请重试';
-                        break;
-                    case 'audio-capture':
-                        errorMsg = '找不到麦克风，请检查设备';
-                        break;
-                    case 'not-allowed':
-                        errorMsg = '请允许使用麦克风权限';
-                        break;
-                    case 'network':
-                        errorMsg = '网络错误，请检查网络连接';
-                        break;
-                    case 'aborted':
-                        errorMsg = '语音识别已取消';
-                        break;
-                    case 'language-not-supported':
-                        errorMsg = '不支持该语言';
-                        break;
-                    default:
-                        errorMsg = '语音识别出错: ' + event.error;
-                }
-                this.showToast(errorMsg);
-                
-                const voiceBtn = document.getElementById('voice-btn');
-                if (voiceBtn) {
-                    voiceBtn.classList.remove('recording');
-                    voiceBtn.querySelector('.voice-btn-text').textContent = '按住说话';
-                }
-            };
-            
-            this.recognition.onend = () => {
-                const voiceBtn = document.getElementById('voice-btn');
-                if (voiceBtn) {
-                    voiceBtn.classList.remove('recording');
-                    voiceBtn.querySelector('.voice-btn-text').textContent = '按住说话';
-                }
-                if (this.currentQuestion) {
-                    this.showToast('识别成功：' + this.currentQuestion);
-                    setTimeout(() => {
-                        this.showPage('answer');
-                    }, 500);
-                }
-            };
-        } else {
-            console.warn('浏览器不支持语音识别');
-        }
     },
     
     bindEvents() {
@@ -157,22 +90,36 @@ const App = {
         
         const voiceBtn = document.getElementById('voice-btn');
         if (voiceBtn) {
-            this.bindVoiceEvents(voiceBtn);
+            voiceBtn.addEventListener('click', () => this.toggleVoiceRecording());
         }
         
         const photoUpload = document.getElementById('photo-upload');
         if (photoUpload) {
-            this.bindPhotoEvents(photoUpload);
+            photoUpload.addEventListener('click', () => this.openCamera());
         }
         
         const cameraBtn = document.getElementById('camera-btn');
         if (cameraBtn) {
-            this.bindCameraEvents(cameraBtn);
+            cameraBtn.addEventListener('click', () => this.capturePhoto());
         }
         
         const voiceConfirmBtn = document.getElementById('voice-confirm-btn');
         if (voiceConfirmBtn) {
-            this.bindVoiceConfirmEvents(voiceConfirmBtn);
+            voiceConfirmBtn.addEventListener('click', () => this.startVoiceConfirm());
+        }
+        
+        const textInput = document.getElementById('text-input');
+        if (textInput) {
+            textInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.submitTextQuestion();
+                }
+            });
+        }
+        
+        const submitBtn = document.getElementById('submit-text');
+        if (submitBtn) {
+            submitBtn.addEventListener('click', () => this.submitTextQuestion());
         }
         
         document.querySelectorAll('.toggle').forEach(toggle => {
@@ -182,153 +129,273 @@ const App = {
         });
     },
     
-    bindVoiceEvents(voiceBtn) {
-        let isRecording = false;
+    async toggleVoiceRecording() {
+        if (this.isRecording) {
+            this.stopVoiceRecording();
+        } else {
+            await this.startVoiceRecording();
+        }
+    },
+    
+    async startVoiceRecording() {
+        const voiceBtn = document.getElementById('voice-btn');
+        const statusText = document.getElementById('voice-status');
+        const recognizedText = document.getElementById('recognized-text');
         
-        const startRecording = async (e) => {
-            e.preventDefault();
-            if (!this.recognition) {
-                this.showToast('您的浏览器不支持语音识别，请使用Chrome浏览器');
-                return;
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            this.showToast('您的浏览器不支持语音识别，请使用Chrome浏览器');
+            return;
+        }
+        
+        try {
+            if (statusText) statusText.textContent = '正在请求麦克风权限...';
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach(track => track.stop());
+        } catch (err) {
+            console.error('麦克风权限错误:', err);
+            let errorMsg = '无法访问麦克风';
+            if (err.name === 'NotAllowedError') {
+                errorMsg = '请允许麦克风权限\n点击地址栏左侧图标设置';
+            } else if (err.name === 'NotFoundError') {
+                errorMsg = '未找到麦克风设备';
             }
-            
-            try {
-                this.showToast('正在请求麦克风权限...');
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                stream.getTracks().forEach(track => track.stop());
-            } catch (err) {
-                console.error('麦克风权限错误:', err);
-                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                    this.showToast('请允许麦克风权限：点击地址栏左侧图标，允许麦克风访问');
-                } else if (err.name === 'NotFoundError') {
-                    this.showToast('未找到麦克风设备');
-                } else {
-                    this.showToast('无法访问麦克风: ' + err.message);
-                }
-                return;
-            }
-            
-            isRecording = true;
+            if (statusText) statusText.textContent = errorMsg;
+            this.showToast(errorMsg);
+            return;
+        }
+        
+        this.isRecording = true;
+        this.currentQuestion = '';
+        
+        if (voiceBtn) {
             voiceBtn.classList.add('recording');
-            voiceBtn.querySelector('.voice-btn-text').textContent = '正在听...';
-            this.currentQuestion = '';
+            voiceBtn.innerHTML = '<span>⏹️</span><span class="voice-btn-text">点击停止</span>';
+        }
+        if (statusText) statusText.textContent = '正在聆听，请说话...';
+        if (recognizedText) recognizedText.textContent = '';
+        
+        const waveAnimation = document.getElementById('wave-animation');
+        if (waveAnimation) waveAnimation.classList.add('active');
+        
+        this.recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        this.recognition.lang = 'zh-CN';
+        this.recognition.continuous = true;
+        this.recognition.interimResults = true;
+        
+        this.recognition.onresult = (event) => {
+            let interimTranscript = '';
+            let finalTranscript = '';
             
-            try {
-                this.recognition.start();
-            } catch (err) {
-                console.error('启动语音识别失败:', err);
-                if (err.name === 'InvalidStateError') {
-                    this.showToast('语音识别正在运行，请稍候...');
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += transcript;
                 } else {
-                    this.showToast('启动语音识别失败，请重试');
+                    interimTranscript += transcript;
                 }
-                isRecording = false;
-                voiceBtn.classList.remove('recording');
-                voiceBtn.querySelector('.voice-btn-text').textContent = '按住说话';
+            }
+            
+            if (recognizedText) {
+                recognizedText.textContent = finalTranscript || interimTranscript;
+            }
+            
+            if (finalTranscript) {
+                this.currentQuestion += finalTranscript;
             }
         };
         
-        const stopRecording = (e) => {
-            e.preventDefault();
-            if (isRecording && this.recognition) {
-                isRecording = false;
-                voiceBtn.classList.remove('recording');
-                voiceBtn.querySelector('.voice-btn-text').textContent = '按住说话';
-                
+        this.recognition.onerror = (event) => {
+            console.error('语音识别错误:', event.error);
+            if (event.error !== 'aborted') {
+                this.showToast('语音识别出错: ' + event.error);
+            }
+            this.stopVoiceRecording();
+        };
+        
+        this.recognition.onend = () => {
+            if (this.isRecording) {
                 try {
-                    this.recognition.stop();
-                } catch (err) {
-                    console.error('停止语音识别失败:', err);
+                    this.recognition.start();
+                } catch (e) {
+                    console.log('重启识别失败', e);
                 }
             }
         };
         
-        voiceBtn.addEventListener('touchstart', startRecording);
-        voiceBtn.addEventListener('touchend', stopRecording);
-        voiceBtn.addEventListener('mousedown', startRecording);
-        voiceBtn.addEventListener('mouseup', stopRecording);
-        voiceBtn.addEventListener('mouseleave', stopRecording);
+        try {
+            this.recognition.start();
+        } catch (err) {
+            console.error('启动语音识别失败:', err);
+            this.showToast('启动失败，请重试');
+            this.isRecording = false;
+            if (voiceBtn) {
+                voiceBtn.classList.remove('recording');
+                voiceBtn.innerHTML = '<span>🎤</span><span class="voice-btn-text">点击说话</span>';
+            }
+        }
     },
     
-    bindPhotoEvents(photoUpload) {
-        photoUpload.addEventListener('click', () => {
-            this.openCamera();
-        });
-    },
-    
-    bindCameraEvents(cameraBtn) {
-        cameraBtn.addEventListener('click', () => {
-            this.capturePhoto();
-        });
-    },
-    
-    bindVoiceConfirmEvents(voiceConfirmBtn) {
-        let isRecording = false;
+    stopVoiceRecording() {
+        this.isRecording = false;
         
-        voiceConfirmBtn.addEventListener('touchstart', async (e) => {
-            e.preventDefault();
-            if (!this.recognition) {
-                this.showToast('您的浏览器不支持语音识别');
-                return;
-            }
-            
-            try {
-                this.showToast('正在请求麦克风权限...');
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                stream.getTracks().forEach(track => track.stop());
-            } catch (err) {
-                console.error('麦克风权限错误:', err);
-                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                    this.showToast('请允许麦克风权限');
-                } else {
-                    this.showToast('无法访问麦克风');
-                }
-                return;
-            }
-            
-            isRecording = true;
-            voiceConfirmBtn.classList.add('recording');
-            voiceConfirmBtn.innerHTML = '<span>🎤</span><span>正在听...</span>';
-            
-            const confirmRecognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-            confirmRecognition.lang = 'zh-CN';
-            confirmRecognition.continuous = false;
-            
-            confirmRecognition.onresult = (event) => {
-                const result = event.results[0][0].transcript;
-                if (result.includes('完成') || result.includes('好了') || result.includes('做完了')) {
-                    this.showToast('任务确认完成！');
-                    setTimeout(() => {
-                        this.showPage('achievement');
-                    }, 1000);
-                } else {
-                    this.showToast('请说"完成了"来确认');
-                }
-            };
-            
-            confirmRecognition.onerror = () => {
-                this.showToast('语音识别失败，请重试');
-            };
-            
-            confirmRecognition.onend = () => {
-                isRecording = false;
-                voiceConfirmBtn.classList.remove('recording');
-                voiceConfirmBtn.innerHTML = '<span>🎤</span><span>按住说话</span>';
-            };
-            
-            try {
-                confirmRecognition.start();
-            } catch (err) {
-                console.error('启动语音确认失败:', err);
-                isRecording = false;
-                voiceConfirmBtn.classList.remove('recording');
-                voiceConfirmBtn.innerHTML = '<span>🎤</span><span>按住说话</span>';
-            }
-        });
+        const voiceBtn = document.getElementById('voice-btn');
+        const statusText = document.getElementById('voice-status');
+        const waveAnimation = document.getElementById('wave-animation');
         
-        voiceConfirmBtn.addEventListener('touchend', (e) => {
-            e.preventDefault();
-        });
+        if (waveAnimation) waveAnimation.classList.remove('active');
+        
+        if (this.recognition) {
+            try {
+                this.recognition.stop();
+            } catch (e) {
+                console.log('停止识别失败', e);
+            }
+        }
+        
+        if (voiceBtn) {
+            voiceBtn.classList.remove('recording');
+            voiceBtn.innerHTML = '<span>🎤</span><span class="voice-btn-text">点击说话</span>';
+        }
+        
+        if (this.currentQuestion && this.currentQuestion.trim()) {
+            if (statusText) statusText.textContent = '识别完成！正在生成答案...';
+            this.showToast('识别成功！');
+            setTimeout(() => {
+                this.generateAIAnswer(this.currentQuestion.trim());
+            }, 500);
+        } else {
+            if (statusText) statusText.textContent = '没有识别到内容，请重试';
+            this.showToast('没有识别到内容');
+        }
+    },
+    
+    submitTextQuestion() {
+        const textInput = document.getElementById('text-input');
+        if (textInput && textInput.value.trim()) {
+            this.currentQuestion = textInput.value.trim();
+            this.showToast('正在生成答案...');
+            this.generateAIAnswer(this.currentQuestion);
+        } else {
+            this.showToast('请输入问题');
+        }
+    },
+    
+    async generateAIAnswer(question) {
+        this.currentQuestion = question;
+        
+        const answers = this.getAIAnswer(question);
+        this.currentAnswer = answers;
+        
+        this.showPage('answer');
+    },
+    
+    getAIAnswer(question) {
+        const q = question.toLowerCase();
+        
+        const answerDatabase = {
+            '恐龙': {
+                elder: '很久很久以前，地球上住着很多很多恐龙。后来有一块超级大的石头从天上掉下来，撞到了地球上，天气变得很冷很冷，恐龙们找不到吃的，就慢慢消失了。',
+                child: '恐龙是因为一颗很大的陨石撞击地球，导致环境变化而灭绝的哦！科学家们还在研究更多的原因呢。',
+                emoji: '🦖'
+            },
+            '天空': {
+                elder: '天空是蓝色的是因为太阳光穿过空气的时候，蓝色的光最容易散开，所以我们看到的天空就是蓝色的。',
+                child: '这是因为光的散射现象！太阳光里有七种颜色，蓝色光波长最短，最容易被空气散射，所以天空看起来是蓝色的。',
+                emoji: '🌤️'
+            },
+            '月亮': {
+                elder: '月亮本身不会发光，我们看到的月光是太阳照在月亮上的光。月亮绕着地球转，有时候太阳照到的地方多，有时候少，所以我们看到的月亮就会变大变小。',
+                child: '这是因为月相变化！月亮绕地球公转，太阳照亮月球的不同部分，所以我们看到月亮有不同的形状。',
+                emoji: '🌙'
+            },
+            '水': {
+                elder: '水结冰是因为天气太冷了，水分子挤在一起不动了，就变成了硬硬的冰。等天气暖和了，它们又动起来，就变回水了。',
+                child: '这是物质的三态变化！温度降低时，水分子运动减慢，排列成规则的晶体结构，就变成了冰。',
+                emoji: '💧'
+            },
+            '彩虹': {
+                elder: '彩虹是下雨后，太阳光穿过小雨滴，就像穿过小玻璃球一样，被分成了七种颜色，就变成了漂亮的彩虹。',
+                child: '这是光的折射和反射现象！阳光进入水滴后发生折射，在水滴内部反射，再折射出来，就形成了彩虹。',
+                emoji: '🌈'
+            },
+            '星星': {
+                elder: '星星其实很大很大，只是离我们太远了，所以看起来很小。就像飞机在天上飞，看起来也很小一样。',
+                child: '星星是遥远的恒星，它们像太阳一样会发光发热。因为距离地球非常远，所以看起来只是小小的光点。',
+                emoji: '⭐'
+            },
+            '睡觉': {
+                elder: '睡觉的时候身体在休息，把一天的疲劳都赶走。就像手机要充电一样，人也要睡觉充电。',
+                child: '睡眠对身体很重要！大脑在睡眠中整理记忆，身体修复细胞，生长激素也在睡眠时分泌最多。',
+                emoji: '😴'
+            },
+            '吃饭': {
+                elder: '吃饭是为了给身体补充能量，就像汽车要加油才能跑一样。不吃饭就没有力气，身体也会生病。',
+                child: '食物提供人体需要的营养素：碳水化合物提供能量，蛋白质帮助生长发育，维生素和矿物质维持身体健康。',
+                emoji: '🍚'
+            }
+        };
+        
+        for (const key in answerDatabase) {
+            if (q.includes(key)) {
+                return answerDatabase[key];
+            }
+        }
+        
+        return {
+            elder: '这是一个很好的问题！让我想想怎么给你解释...这个问题很有趣，我们可以一起去书里或者网上找找答案，一起学习新知识！',
+            child: '这是一个值得探索的问题！让我们一起去查找资料，学习更多知识吧！科学就是从提问开始的。',
+            emoji: '🤔'
+        };
+    },
+    
+    async startVoiceConfirm() {
+        const voiceConfirmBtn = document.getElementById('voice-confirm-btn');
+        if (!voiceConfirmBtn) return;
+        
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            this.showToast('您的浏览器不支持语音识别');
+            return;
+        }
+        
+        try {
+            this.showToast('正在请求麦克风权限...');
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach(track => track.stop());
+        } catch (err) {
+            this.showToast('请允许麦克风权限');
+            return;
+        }
+        
+        voiceConfirmBtn.innerHTML = '<span>🎤</span><span>正在听...</span>';
+        
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'zh-CN';
+        recognition.continuous = false;
+        
+        recognition.onresult = (event) => {
+            const result = event.results[0][0].transcript;
+            if (result.includes('完成') || result.includes('好了') || result.includes('做完了')) {
+                this.showToast('任务确认完成！');
+                setTimeout(() => this.showPage('achievement'), 1000);
+            } else {
+                this.showToast('请说"完成了"来确认');
+            }
+            voiceConfirmBtn.innerHTML = '<span>🎤</span><span>语音确认</span>';
+        };
+        
+        recognition.onerror = () => {
+            this.showToast('语音识别失败，请重试');
+            voiceConfirmBtn.innerHTML = '<span>🎤</span><span>语音确认</span>';
+        };
+        
+        try {
+            recognition.start();
+        } catch (err) {
+            this.showToast('启动失败，请重试');
+            voiceConfirmBtn.innerHTML = '<span>🎤</span><span>语音确认</span>';
+        }
     },
     
     async openCamera() {
@@ -352,12 +419,7 @@ const App = {
                 const video = document.getElementById('camera-video');
                 video.srcObject = this.mediaStream;
                 
-                const cameraBtn = document.getElementById('camera-btn');
-                if (cameraBtn) {
-                    cameraBtn.addEventListener('click', () => {
-                        this.capturePhoto();
-                    });
-                }
+                document.getElementById('camera-btn').addEventListener('click', () => this.capturePhoto());
             }
         } catch (err) {
             console.error('打开相机失败:', err);
@@ -379,7 +441,6 @@ const App = {
         ctx.drawImage(video, 0, 0);
         
         this.capturedPhoto = canvas.toDataURL('image/jpeg');
-        
         this.stopCamera();
         
         const cameraContainer = document.getElementById('camera-container');
@@ -431,6 +492,7 @@ const App = {
         switch(action) {
             case 'go-back':
                 this.stopCamera();
+                if (this.isRecording) this.stopVoiceRecording();
                 if (this.previousPage) {
                     this.showPage(this.previousPage);
                 } else {
@@ -439,6 +501,7 @@ const App = {
                 break;
             case 'go-home':
                 this.stopCamera();
+                if (this.isRecording) this.stopVoiceRecording();
                 this.showPage('home');
                 break;
             case 'start-voice':
@@ -473,7 +536,11 @@ const App = {
                 this.speakText('妈，今天降温，记得给小宝加衣服');
                 break;
             case 'play-answer-voice':
-                this.speakText('很久很久以前，地球上住着很多很多恐龙。突然有一天，一块超级大的石头从天上掉下来，撞到了地球上，引起了很多变化。恐龙们没法适应，就慢慢消失了。');
+                if (this.currentAnswer && this.currentAnswer.elder) {
+                    this.speakText(this.currentAnswer.elder);
+                } else {
+                    this.speakText('很久很久以前，地球上住着很多很多恐龙。后来有一块超级大的石头从天上掉下来，撞到了地球上，天气变得很冷很冷，恐龙们找不到吃的，就慢慢消失了。');
+                }
                 break;
             case 'play-animation':
                 this.showToast('正在播放动画...');
@@ -599,16 +666,16 @@ const App = {
                     </button>
                 </div>
                 
-                <div class="status-text">请说出您的问题</div>
+                <div class="status-text" id="voice-status">点击按钮开始说话</div>
                 
                 <div class="voice-btn-container">
                     <button class="voice-btn" id="voice-btn">
                         <span>🎤</span>
-                        <span class="voice-btn-text">按住说话</span>
+                        <span class="voice-btn-text">点击说话</span>
                     </button>
                 </div>
                 
-                <div class="wave-animation">
+                <div class="wave-animation" id="wave-animation">
                     <div class="wave-bar"></div>
                     <div class="wave-bar"></div>
                     <div class="wave-bar"></div>
@@ -618,31 +685,43 @@ const App = {
                     <div class="wave-bar"></div>
                 </div>
                 
-                <div style="text-align: center; padding: 16px; background: var(--color-white); border-radius: var(--radius-md); margin-top: 20px;">
-                    ${hasSpeechRecognition ? `
-                        <p style="color: var(--color-text); font-size: var(--font-body); margin-bottom: 12px;">
-                            📱 使用说明
-                        </p>
-                        <p style="color: var(--color-text-light); font-size: var(--font-small); line-height: 1.8;">
-                            1. 按住按钮开始说话<br>
-                            2. 说完后松开按钮<br>
-                            3. 支持普通话和方言<br>
-                            <strong style="color: var(--color-primary);">需要允许麦克风权限</strong>
-                        </p>
-                    ` : `
+                <div id="recognized-text" style="text-align: center; font-size: var(--font-body); color: var(--color-text); min-height: 60px; padding: 16px; background: var(--color-white); border-radius: var(--radius-md); margin: 16px 0;">
+                    识别结果将显示在这里...
+                </div>
+                
+                <div class="card" style="margin-top: 16px;">
+                    <div class="card-title">✏️ 或者输入文字</div>
+                    <input type="text" id="text-input" placeholder="请输入您的问题..." style="width: 100%; padding: 16px; font-size: var(--font-body); border: 2px solid var(--color-border); border-radius: var(--radius-md); outline: none;">
+                    <button class="btn btn-primary" id="submit-text" style="margin-top: 12px;">
+                        提交问题
+                    </button>
+                </div>
+                
+                ${!hasSpeechRecognition ? `
+                    <div style="text-align: center; padding: 16px; background: #FFF0F0; border-radius: var(--radius-md); margin-top: 16px; border: 2px solid var(--color-error);">
                         <p style="color: var(--color-error); font-size: var(--font-body); margin-bottom: 8px;">
                             ⚠️ 您的浏览器不支持语音识别
                         </p>
                         <p style="color: var(--color-text-light); font-size: var(--font-small);">
-                            请使用 Chrome、Edge 或 Safari 浏览器
+                            请使用 Chrome、Edge 或 Safari 浏览器，或使用上方文字输入
                         </p>
-                    `}
-                </div>
+                    </div>
+                ` : `
+                    <div style="text-align: center; padding: 12px; color: var(--color-text-light); font-size: var(--font-small);">
+                        💡 提示：点击按钮开始录音，再次点击停止并发送
+                    </div>
+                `}
             </div>
         `;
     },
     
     getAnswerPage() {
+        const answer = this.currentAnswer || {
+            elder: '很久很久以前，地球上住着很多很多恐龙。后来有一块超级大的石头从天上掉下来，撞到了地球上，天气变得很冷很冷，恐龙们找不到吃的，就慢慢消失了。',
+            child: '恐龙是因为一颗很大的陨石撞击地球，导致环境变化而灭绝的哦！科学家们还在研究更多的原因呢。',
+            emoji: '🦖'
+        };
+        
         return `
             <div class="page active">
                 <div class="header">
@@ -650,18 +729,15 @@ const App = {
                         <span>←</span>
                         <span>返回</span>
                     </button>
-                    <div class="header-title">问题：${this.currentQuestion || '恐龙怎么灭绝的？'}</div>
+                    <div class="header-title" style="font-size: 18px;">${this.currentQuestion || '问题'}</div>
                 </div>
                 
                 <div class="answer-container">
                     <div class="answer-panel">
-                        <div class="answer-panel-title">给奶奶的话</div>
-                        <ul class="answer-text">
-                            <li>很久很久以前，地球上住着很多很多恐龙</li>
-                            <li>突然有一天，一块超级大的石头从天上掉下来</li>
-                            <li>撞到了地球上，引起了很多变化</li>
-                            <li>恐龙们没法适应，就慢慢消失了</li>
-                        </ul>
+                        <div class="answer-panel-title">👵 给奶奶的话</div>
+                        <div class="answer-text" style="line-height: 1.8;">
+                            ${answer.elder}
+                        </div>
                         <button class="play-btn" data-action="play-answer-voice">
                             <span>🔊</span>
                             <span>语音朗读</span>
@@ -669,13 +745,15 @@ const App = {
                     </div>
                     
                     <div class="answer-panel">
-                        <div class="answer-panel-title">给小宝看的</div>
+                        <div class="answer-panel-title">👦 给小宝看的</div>
                         <div class="answer-media">
-                            <div class="answer-media-icon">🦖</div>
-                            <div class="answer-media-text">恐龙灭绝动画</div>
+                            <div class="answer-media-icon">${answer.emoji}</div>
+                            <div class="answer-media-text" style="margin: 12px 0; padding: 12px; background: var(--color-bg); border-radius: var(--radius-md); font-size: var(--font-small);">
+                                ${answer.child}
+                            </div>
                             <button class="play-btn" data-action="play-animation">
                                 <span>▶️</span>
-                                <span>点击播放</span>
+                                <span>播放动画</span>
                             </button>
                         </div>
                     </div>
@@ -702,10 +780,10 @@ const App = {
                 
                 <div class="share-card">
                     <div class="share-title">🎉 今日共学卡片</div>
-                    <div class="share-icon">🦖</div>
+                    <div class="share-icon">${this.currentAnswer?.emoji || '🦖'}</div>
                     <div class="share-message">
                         ${this.userData.name}今天学习了<br>
-                        <strong>"恐龙是怎么灭绝的？"</strong><br>
+                        <strong>"${this.currentQuestion || '恐龙是怎么灭绝的？'}"</strong><br>
                         和${this.userData.childName}一起成长！
                     </div>
                 </div>
@@ -873,7 +951,7 @@ const App = {
                     </p>
                     <button class="btn btn-outline btn-lg" id="voice-confirm-btn">
                         <span>🎤</span>
-                        <span>按住说话</span>
+                        <span>语音确认</span>
                     </button>
                 </div>
             </div>
