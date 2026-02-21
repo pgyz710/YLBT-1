@@ -141,10 +141,16 @@ const App = {
         const voiceBtn = document.getElementById('voice-btn');
         const statusText = document.getElementById('voice-status');
         const recognizedText = document.getElementById('recognized-text');
+        const waveAnimation = document.getElementById('wave-animation');
         
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
             this.showToast('您的浏览器不支持语音识别，请使用Chrome浏览器');
+            return;
+        }
+        
+        if (this.isRecording) {
+            this.stopVoiceRecording();
             return;
         }
         
@@ -156,7 +162,7 @@ const App = {
             console.error('麦克风权限错误:', err);
             let errorMsg = '无法访问麦克风';
             if (err.name === 'NotAllowedError') {
-                errorMsg = '请允许麦克风权限\n点击地址栏左侧图标设置';
+                errorMsg = '请允许麦克风权限';
             } else if (err.name === 'NotFoundError') {
                 errorMsg = '未找到麦克风设备';
             }
@@ -167,25 +173,43 @@ const App = {
         
         this.isRecording = true;
         this.currentQuestion = '';
+        this.recognitionStopped = false;
         
         if (voiceBtn) {
             voiceBtn.classList.add('recording');
-            voiceBtn.innerHTML = '<span>⏹️</span><span class="voice-btn-text">点击停止</span>';
+            voiceBtn.innerHTML = '<span>⏹️</span><span class="voice-btn-text">停止</span>';
         }
-        if (statusText) statusText.textContent = '正在聆听，请说话...';
-        if (recognizedText) recognizedText.textContent = '';
-        
-        const waveAnimation = document.getElementById('wave-animation');
+        if (statusText) statusText.textContent = '正在聆听...';
+        if (recognizedText) recognizedText.textContent = '请说话...';
         if (waveAnimation) waveAnimation.classList.add('active');
         
         this.recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
         this.recognition.lang = 'zh-CN';
-        this.recognition.continuous = true;
+        this.recognition.continuous = false;
         this.recognition.interimResults = true;
+        this.recognition.maxAlternatives = 1;
+        
+        let finalTranscript = '';
+        let timeoutId = null;
+        
+        const stopRecognition = () => {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (this.recognition && !this.recognitionStopped) {
+                this.recognitionStopped = true;
+                try {
+                    this.recognition.stop();
+                } catch (e) {}
+            }
+        };
+        
+        timeoutId = setTimeout(() => {
+            if (this.isRecording) {
+                stopRecognition();
+            }
+        }, 15000);
         
         this.recognition.onresult = (event) => {
             let interimTranscript = '';
-            let finalTranscript = '';
             
             for (let i = event.resultIndex; i < event.results.length; i++) {
                 const transcript = event.results[i][0].transcript;
@@ -196,30 +220,57 @@ const App = {
                 }
             }
             
+            const displayText = finalTranscript || interimTranscript;
             if (recognizedText) {
-                recognizedText.textContent = finalTranscript || interimTranscript;
-            }
-            
-            if (finalTranscript) {
-                this.currentQuestion += finalTranscript;
+                recognizedText.textContent = displayText || '正在识别...';
             }
         };
         
         this.recognition.onerror = (event) => {
             console.error('语音识别错误:', event.error);
-            if (event.error !== 'aborted') {
-                this.showToast('语音识别出错: ' + event.error);
+            if (timeoutId) clearTimeout(timeoutId);
+            
+            let errorMsg = '识别出错';
+            if (event.error === 'no-speech') {
+                errorMsg = '没有检测到语音';
+            } else if (event.error === 'audio-capture') {
+                errorMsg = '无法获取音频';
+            } else if (event.error === 'network') {
+                errorMsg = '网络错误，请检查网络';
+            } else if (event.error === 'not-allowed') {
+                errorMsg = '麦克风权限被拒绝';
+            } else if (event.error === 'aborted') {
+                errorMsg = '';
             }
-            this.stopVoiceRecording();
+            
+            if (errorMsg) {
+                if (statusText) statusText.textContent = errorMsg;
+                this.showToast(errorMsg);
+            }
+            
+            this.resetVoiceUI(voiceBtn, statusText, recognizedText, waveAnimation);
+            this.isRecording = false;
         };
         
         this.recognition.onend = () => {
-            if (this.isRecording) {
-                try {
-                    this.recognition.start();
-                } catch (e) {
-                    console.log('重启识别失败', e);
-                }
+            if (timeoutId) clearTimeout(timeoutId);
+            
+            if (!this.isRecording) return;
+            
+            this.isRecording = false;
+            this.resetVoiceUI(voiceBtn, statusText, recognizedText, waveAnimation);
+            
+            if (finalTranscript && finalTranscript.trim()) {
+                this.currentQuestion = finalTranscript.trim();
+                if (statusText) statusText.textContent = '识别完成！';
+                if (recognizedText) recognizedText.textContent = this.currentQuestion;
+                this.showToast('识别成功！');
+                setTimeout(() => {
+                    this.generateAIAnswer(this.currentQuestion);
+                }, 800);
+            } else {
+                if (statusText) statusText.textContent = '没有识别到内容';
+                if (recognizedText) recognizedText.textContent = '请点击按钮重试';
             }
         };
         
@@ -227,20 +278,28 @@ const App = {
             this.recognition.start();
         } catch (err) {
             console.error('启动语音识别失败:', err);
+            if (timeoutId) clearTimeout(timeoutId);
             this.showToast('启动失败，请重试');
+            this.resetVoiceUI(voiceBtn, statusText, recognizedText, waveAnimation);
             this.isRecording = false;
-            if (voiceBtn) {
-                voiceBtn.classList.remove('recording');
-                voiceBtn.innerHTML = '<span>🎤</span><span class="voice-btn-text">点击说话</span>';
-            }
         }
+    },
+    
+    resetVoiceUI(voiceBtn, statusText, recognizedText, waveAnimation) {
+        if (voiceBtn) {
+            voiceBtn.classList.remove('recording');
+            voiceBtn.innerHTML = '<span>🎤</span><span class="voice-btn-text">点击说话</span>';
+        }
+        if (waveAnimation) waveAnimation.classList.remove('active');
     },
     
     stopVoiceRecording() {
         this.isRecording = false;
+        this.recognitionStopped = true;
         
         const voiceBtn = document.getElementById('voice-btn');
         const statusText = document.getElementById('voice-status');
+        const recognizedText = document.getElementById('recognized-text');
         const waveAnimation = document.getElementById('wave-animation');
         
         if (waveAnimation) waveAnimation.classList.remove('active');
@@ -248,25 +307,19 @@ const App = {
         if (this.recognition) {
             try {
                 this.recognition.stop();
-            } catch (e) {
-                console.log('停止识别失败', e);
-            }
+            } catch (e) {}
         }
         
-        if (voiceBtn) {
-            voiceBtn.classList.remove('recording');
-            voiceBtn.innerHTML = '<span>🎤</span><span class="voice-btn-text">点击说话</span>';
-        }
+        this.resetVoiceUI(voiceBtn, statusText, recognizedText, waveAnimation);
         
         if (this.currentQuestion && this.currentQuestion.trim()) {
-            if (statusText) statusText.textContent = '识别完成！正在生成答案...';
+            if (statusText) statusText.textContent = '识别完成！';
             this.showToast('识别成功！');
             setTimeout(() => {
                 this.generateAIAnswer(this.currentQuestion.trim());
             }, 500);
         } else {
-            if (statusText) statusText.textContent = '没有识别到内容，请重试';
-            this.showToast('没有识别到内容');
+            if (statusText) statusText.textContent = '已取消';
         }
     },
     
