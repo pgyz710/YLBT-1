@@ -13,27 +13,63 @@
 </head>
 <body>
     <div id="app">
-        <div id="page-container"></div>
-        <nav id="bottom-nav" class="bottom-nav">
-            <button class="nav-item active" data-page="home">
-                <span class="nav-icon">🏠</span>
-                <span class="nav-label">首页</span>
-            </button>
-            <button class="nav-item" data-page="tasks">
-                <span class="nav-icon">📋</span>
-                <span class="nav-label">任务</span>
-            </button>
-            <button class="nav-item" data-page="activities">
-                <span class="nav-icon">🎉</span>
-                <span class="nav-label">活动</span>
-            </button>
-            <button class="nav-item" data-page="profile">
-                <span class="nav-icon">👤</span>
-                <span class="nav-label">我的</span>
-            </button>
-        </nav>
+        <div id="login-page" class="login-page">
+            <div class="login-container">
+                <div class="login-logo">👵👶</div>
+                <h1 class="login-title">银龄伴童</h1>
+                <p class="login-subtitle">智慧陪伴，温暖成长</p>
+                
+                <div class="login-tabs">
+                    <button class="login-tab active" data-role="elder">老人端</button>
+                    <button class="login-tab" data-role="child">子女端</button>
+                </div>
+                
+                <div class="login-form">
+                    <div class="form-group">
+                        <label>账号</label>
+                        <select id="login-username" class="form-input">
+                            <option value="">请选择账号</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>密码</label>
+                        <input type="password" id="login-password" class="form-input" placeholder="请输入密码（默认123456）">
+                    </div>
+                    <button class="btn btn-primary btn-lg login-btn" id="login-btn">登录</button>
+                </div>
+                
+                <div class="login-demo-hint">
+                    <p>演示账号：</p>
+                    <p>老人端：奶奶/爷爷（密码：123456）</p>
+                    <p>子女端：女儿/儿子（密码：123456）</p>
+                </div>
+            </div>
+        </div>
+        
+        <div id="main-app" class="hidden">
+            <div id="page-container"></div>
+            <nav id="bottom-nav" class="bottom-nav">
+                <button class="nav-item active" data-page="home">
+                    <span class="nav-icon">🏠</span>
+                    <span class="nav-label">首页</span>
+                </button>
+                <button class="nav-item" data-page="tasks">
+                    <span class="nav-icon">📋</span>
+                    <span class="nav-label">任务</span>
+                </button>
+                <button class="nav-item" data-page="activities">
+                    <span class="nav-icon">🎉</span>
+                    <span class="nav-label">活动</span>
+                </button>
+                <button class="nav-item" data-page="profile">
+                    <span class="nav-icon">👤</span>
+                    <span class="nav-label">我的</span>
+                </button>
+            </nav>
+        </div>
     </div>
 
+    <script src="config.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
