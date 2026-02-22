@@ -243,51 +243,105 @@ const App = {
         const recognizedText = document.getElementById('recognized-text');
         const waveAnimation = document.getElementById('wave-animation');
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) { this.showToast('您的浏览器不支持语音识别'); return; }
+        
+        if (!SpeechRecognition) {
+            this.showToast('您的浏览器不支持语音识别，请使用Chrome或Edge');
+            if (statusText) statusText.textContent = '浏览器不支持语音识别';
+            return;
+        }
+        
+        if (location.protocol === 'file:') {
+            this.showToast('请通过HTTP服务器访问（如localhost）');
+            if (statusText) statusText.textContent = '需要通过服务器访问才能使用语音';
+            return;
+        }
+        
         try {
             if (statusText) statusText.textContent = '正在请求麦克风权限...';
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             stream.getTracks().forEach(track => track.stop());
         } catch (err) {
-            let errorMsg = err.name === 'NotAllowedError' ? '请允许麦克风权限' : err.name === 'NotFoundError' ? '未找到麦克风设备' : '无法访问麦克风';
+            let errorMsg = '无法访问麦克风';
+            if (err.name === 'NotAllowedError') errorMsg = '请点击地址栏左侧，允许麦克风权限';
+            else if (err.name === 'NotFoundError') errorMsg = '未找到麦克风设备';
+            else if (err.name === 'NotReadableError') errorMsg = '麦克风被其他程序占用';
+            else if (err.name === 'SecurityError') errorMsg = '安全限制：请使用HTTPS或localhost访问';
             if (statusText) statusText.textContent = errorMsg;
-            this.showToast(errorMsg); return;
+            this.showToast(errorMsg);
+            console.error('麦克风错误:', err);
+            return;
         }
-        this.isRecording = true; this.currentQuestion = ''; this.recognitionStopped = false;
-        if (voiceBtn) { voiceBtn.classList.add('recording'); voiceBtn.innerHTML = '<span>⏹️</span><span class="voice-btn-text">停止</span>'; }
+        
+        this.isRecording = true;
+        this.currentQuestion = '';
+        this.recognitionStopped = false;
+        
+        if (voiceBtn) {
+            voiceBtn.classList.add('recording');
+            voiceBtn.innerHTML = '<span>⏹️</span><span class="voice-btn-text">停止</span>';
+        }
         if (statusText) statusText.textContent = '正在聆听...';
         if (recognizedText) recognizedText.textContent = '请说话...';
         if (waveAnimation) waveAnimation.classList.add('active');
+        
         this.recognition = new SpeechRecognition();
-        this.recognition.lang = 'zh-CN'; this.recognition.continuous = false; this.recognition.interimResults = true;
+        this.recognition.lang = 'zh-CN';
+        this.recognition.continuous = false;
+        this.recognition.interimResults = true;
+        
         let finalTranscript = '';
+        
         this.recognition.onresult = (event) => {
             let interimTranscript = '';
             for (let i = event.resultIndex; i < event.results.length; i++) {
-                if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
-                else interimTranscript += event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
+                }
             }
-            if (recognizedText) recognizedText.textContent = finalTranscript || interimTranscript || '正在识别...';
+            if (recognizedText) {
+                recognizedText.textContent = finalTranscript || interimTranscript || '正在识别...';
+            }
         };
+        
         this.recognition.onerror = (event) => {
-            let errorMsg = event.error === 'no-speech' ? '没有检测到语音' : event.error === 'network' ? '网络错误' : '识别出错';
+            let errorMsg = '识别出错';
+            if (event.error === 'no-speech') errorMsg = '没有检测到语音，请重试';
+            else if (event.error === 'network') errorMsg = '网络错误，请检查网络连接';
+            else if (event.error === 'audio-capture') errorMsg = '未找到麦克风';
+            else if (event.error === 'not-allowed') errorMsg = '麦克风权限被拒绝';
+            else if (event.error === 'aborted') errorMsg = '录音被中断';
+            
             if (statusText) statusText.textContent = errorMsg;
             this.showToast(errorMsg);
             this.resetVoiceUI(voiceBtn, statusText, recognizedText, waveAnimation);
             this.isRecording = false;
+            console.error('语音识别错误:', event.error);
         };
+        
         this.recognition.onend = () => {
-            if (!this.isRecording) return;
+            if (this.recognitionStopped) return;
             this.isRecording = false;
             this.resetVoiceUI(voiceBtn, statusText, recognizedText, waveAnimation);
+            
             if (finalTranscript.trim()) {
                 this.currentQuestion = finalTranscript.trim();
                 if (statusText) statusText.textContent = '识别完成！';
                 this.showToast('识别成功！');
                 setTimeout(() => this.generateAIAnswer(this.currentQuestion), 800);
-            } else { if (statusText) statusText.textContent = '没有识别到内容'; }
+            } else {
+                if (statusText) statusText.textContent = '没有识别到内容，请重试';
+            }
         };
-        try { this.recognition.start(); } catch (err) { this.showToast('启动失败'); this.isRecording = false; }
+        
+        try {
+            this.recognition.start();
+        } catch (err) {
+            this.showToast('启动语音识别失败');
+            this.isRecording = false;
+            console.error('启动失败:', err);
+        }
     },
     
     resetVoiceUI(voiceBtn, statusText, recognizedText, waveAnimation) {
@@ -485,12 +539,15 @@ const App = {
     },
     
     getChildHomePage() {
-        const parent = Config.defaultAccounts.find(a => a.id === this.currentUser.parentId);
+        const parentIds = this.currentUser.parentIds || [1];
+        const parents = parentIds.map(id => Config.defaultAccounts.find(a => a.id === id)).filter(Boolean);
+        const parentNames = parents.map(p => p.username).join('、');
+        const parentAvatars = parents.map(p => p.avatar).join('');
         const done = this.tasks.filter(t => t.status === 'completed').length;
         return `
 <div class="page active">
 <div class="child-header"><div class="child-title">子女端</div><button class="btn btn-outline" data-action="logout" style="padding:8px 16px;height:auto;font-size:14px">退出</button></div>
-<div class="parent-status-card"><div class="parent-status-header"><div class="parent-avatar">${parent?.avatar || '👵'}</div><div class="parent-info"><h3>${parent?.username || '老人'}</h3><p>今日学习 ${this.learningStats.totalQuestions} 次</p></div><span class="status-badge online"><span style="width:8px;height:8px;background:#27AE60;border-radius:50%"></span>在线</span></div><div class="progress-bar" style="margin-top:12px"><div class="progress-fill" style="width:${this.tasks.length?Math.round(done/this.tasks.length*100):0}%"></div></div><p style="margin-top:8px;color:var(--color-text-light);font-size:14px">今日任务完成 ${done}/${this.tasks.length}</p></div>
+<div class="parent-status-card"><div class="parent-status-header"><div class="parent-avatar">${parentAvatars || '👵'}</div><div class="parent-info"><h3>${parentNames || '老人'}</h3><p>今日学习 ${this.learningStats.totalQuestions} 次</p></div><span class="status-badge online"><span style="width:8px;height:8px;background:#27AE60;border-radius:50%"></span>在线</span></div><div class="progress-bar" style="margin-top:12px"><div class="progress-fill" style="width:${this.tasks.length?Math.round(done/this.tasks.length*100):0}%"></div></div><p style="margin-top:8px;color:var(--color-text-light);font-size:14px">今日任务完成 ${done}/${this.tasks.length}</p></div>
 <div class="api-settings-card"><h3>🔑 AI设置</h3><div class="task-input-group"><label>通义千问API密钥</label><input type="text" id="api-key-input" class="form-input" placeholder="输入API密钥后回答问题将使用AI"></div><p class="api-hint">获取方式：访问 <a href="https://dashscope.console.aliyun.com/" target="_blank">阿里云DashScope</a> 免费申请</p></div>
 <div class="task-add-card"><h3>📝 布置新任务</h3><div class="task-input-group"><label>任务名称</label><input type="text" id="new-task-name" placeholder="例如：背古诗《静夜思》"></div><div class="task-input-group"><label>任务说明</label><textarea id="new-task-desc" placeholder="详细说明任务内容..."></textarea></div><div class="task-input-group"><label>任务类别</label><div class="task-category-select"><span class="category-tag active" data-category="语文">语文</span><span class="category-tag" data-category="数学">数学</span><span class="category-tag" data-category="英语">英语</span><span class="category-tag" data-category="科学">科学</span><span class="category-tag" data-category="其他">其他</span></div></div><button class="btn btn-primary btn-lg" id="add-task-btn">添加任务</button></div>
 <div class="message-send-card"><h3>💬 发送留言</h3><div class="task-input-group"><textarea id="new-message-input" placeholder="给老人留言..."></textarea></div><button class="btn btn-primary btn-lg" id="send-message-btn">发送留言</button></div>
@@ -512,8 +569,11 @@ const App = {
     },
     
     getChildProfilePage() {
+        const parentIds = this.currentUser.parentIds || [1];
+        const parents = parentIds.map(id => Config.defaultAccounts.find(a => a.id === id)).filter(Boolean);
+        const parentNames = parents.map(p => p.username).join('、');
         const done = this.tasks.filter(t=>t.status==='completed').length;
-        return `<div class="page active"><div class="profile-header"><div class="profile-avatar">${this.currentUser.avatar}</div><div class="profile-name">${this.currentUser.username}</div><div class="profile-desc">子女端 · 管理${this.currentUser.parentName}的学习</div></div><div class="stats-card"><div class="stat-row"><div class="stat-item-large"><div class="stat-value">${this.tasks.length}</div><div class="stat-label">布置任务</div></div><div class="stat-item-large"><div class="stat-value">${done}</div><div class="stat-label">已完成</div></div></div></div><div class="api-settings-card"><h3>🔑 AI设置</h3><div class="task-input-group"><label>通义千问API密钥</label><input type="text" id="api-key-input" class="form-input" placeholder="输入API密钥"></div><p class="api-hint">获取方式：访问 <a href="https://dashscope.console.aliyun.com/" target="_blank">阿里云DashScope</a> 免费申请</p></div><div class="settings-group"><div class="settings-group-title">账号</div><div class="settings-item" data-action="logout"><div class="settings-label"><span class="settings-icon">🚪</span><span>退出登录</span></div><span style="color:var(--color-text-light)">→</span></div></div></div>`;
+        return `<div class="page active"><div class="profile-header"><div class="profile-avatar">${this.currentUser.avatar}</div><div class="profile-name">${this.currentUser.username}</div><div class="profile-desc">子女端 · 管理${parentNames}的学习</div></div><div class="stats-card"><div class="stat-row"><div class="stat-item-large"><div class="stat-value">${this.tasks.length}</div><div class="stat-label">布置任务</div></div><div class="stat-item-large"><div class="stat-value">${done}</div><div class="stat-label">已完成</div></div></div></div><div class="api-settings-card"><h3>🔑 AI设置</h3><div class="task-input-group"><label>通义千问API密钥</label><input type="text" id="api-key-input" class="form-input" placeholder="输入API密钥"></div><p class="api-hint">获取方式：访问 <a href="https://dashscope.console.aliyun.com/" target="_blank">阿里云DashScope</a> 免费申请</p></div><div class="settings-group"><div class="settings-group-title">账号</div><div class="settings-item" data-action="logout"><div class="settings-label"><span class="settings-icon">🚪</span><span>退出登录</span></div><span style="color:var(--color-text-light)">→</span></div></div></div>`;
     },
     
     getHomePage() {
