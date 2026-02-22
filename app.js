@@ -213,6 +213,10 @@ const App = {
         if (textInput) textInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') this.submitTextQuestion(); });
         const submitBtn = document.getElementById('submit-text');
         if (submitBtn) submitBtn.addEventListener('click', () => this.submitTextQuestion());
+        const homeTextInput = document.getElementById('home-text-input');
+        if (homeTextInput) homeTextInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') this.submitHomeTextQuestion(); });
+        const homeSubmitBtn = document.getElementById('home-submit-text');
+        if (homeSubmitBtn) homeSubmitBtn.addEventListener('click', () => this.submitHomeTextQuestion());
         const addTaskBtn = document.getElementById('add-task-btn');
         if (addTaskBtn) addTaskBtn.addEventListener('click', () => this.addNewTask());
         const sendMessageBtn = document.getElementById('send-message-btn');
@@ -243,16 +247,11 @@ const App = {
         const recognizedText = document.getElementById('recognized-text');
         const waveAnimation = document.getElementById('wave-animation');
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         
         if (!SpeechRecognition) {
             this.showToast('您的浏览器不支持语音识别，请使用Chrome或Edge');
             if (statusText) statusText.textContent = '浏览器不支持语音识别';
-            return;
-        }
-        
-        if (location.protocol === 'file:') {
-            this.showToast('请通过HTTP服务器访问（如localhost）');
-            if (statusText) statusText.textContent = '需要通过服务器访问才能使用语音';
             return;
         }
         
@@ -264,17 +263,13 @@ const App = {
             let errorMsg = '无法访问麦克风';
             if (err.name === 'NotAllowedError') errorMsg = '请点击地址栏左侧，允许麦克风权限';
             else if (err.name === 'NotFoundError') errorMsg = '未找到麦克风设备';
-            else if (err.name === 'NotReadableError') errorMsg = '麦克风被其他程序占用';
-            else if (err.name === 'SecurityError') errorMsg = '安全限制：请使用HTTPS或localhost访问';
             if (statusText) statusText.textContent = errorMsg;
             this.showToast(errorMsg);
-            console.error('麦克风错误:', err);
             return;
         }
         
         this.isRecording = true;
         this.currentQuestion = '';
-        this.recognitionStopped = false;
         
         if (voiceBtn) {
             voiceBtn.classList.add('recording');
@@ -286,13 +281,22 @@ const App = {
         
         this.recognition = new SpeechRecognition();
         this.recognition.lang = 'zh-CN';
-        this.recognition.continuous = false;
-        this.recognition.interimResults = true;
+        
+        if (isMobile) {
+            this.recognition.continuous = false;
+            this.recognition.interimResults = true;
+            this.recognition.maxAlternatives = 3;
+        } else {
+            this.recognition.continuous = false;
+            this.recognition.interimResults = false;
+            this.recognition.maxAlternatives = 1;
+        }
         
         let finalTranscript = '';
+        let interimTranscript = '';
         
         this.recognition.onresult = (event) => {
-            let interimTranscript = '';
+            interimTranscript = '';
             for (let i = event.resultIndex; i < event.results.length; i++) {
                 if (event.results[i].isFinal) {
                     finalTranscript += event.results[i][0].transcript;
@@ -306,27 +310,30 @@ const App = {
         };
         
         this.recognition.onerror = (event) => {
-            let errorMsg = '识别出错';
+            let errorMsg = '识别出错，请重试';
             if (event.error === 'no-speech') errorMsg = '没有检测到语音，请重试';
             else if (event.error === 'network') errorMsg = '网络错误，请检查网络连接';
-            else if (event.error === 'audio-capture') errorMsg = '未找到麦克风';
             else if (event.error === 'not-allowed') errorMsg = '麦克风权限被拒绝';
-            else if (event.error === 'aborted') errorMsg = '录音被中断';
+            else if (event.error === 'audio-capture') errorMsg = '未找到麦克风';
             
             if (statusText) statusText.textContent = errorMsg;
             this.showToast(errorMsg);
             this.resetVoiceUI(voiceBtn, statusText, recognizedText, waveAnimation);
             this.isRecording = false;
-            console.error('语音识别错误:', event.error);
         };
         
         this.recognition.onend = () => {
-            if (this.recognitionStopped) return;
+            if (!this.isRecording) return;
             this.isRecording = false;
             this.resetVoiceUI(voiceBtn, statusText, recognizedText, waveAnimation);
             
-            if (finalTranscript.trim()) {
+            if (finalTranscript && finalTranscript.trim()) {
                 this.currentQuestion = finalTranscript.trim();
+                if (statusText) statusText.textContent = '识别完成！';
+                this.showToast('识别成功！');
+                setTimeout(() => this.generateAIAnswer(this.currentQuestion), 800);
+            } else if (interimTranscript && interimTranscript.trim()) {
+                this.currentQuestion = interimTranscript.trim();
                 if (statusText) statusText.textContent = '识别完成！';
                 this.showToast('识别成功！');
                 setTimeout(() => this.generateAIAnswer(this.currentQuestion), 800);
@@ -340,7 +347,6 @@ const App = {
         } catch (err) {
             this.showToast('启动语音识别失败');
             this.isRecording = false;
-            console.error('启动失败:', err);
         }
     },
     
@@ -358,6 +364,16 @@ const App = {
         const textInput = document.getElementById('text-input');
         if (textInput && textInput.value.trim()) {
             this.currentQuestion = textInput.value.trim();
+            this.showToast('正在生成答案...');
+            this.generateAIAnswer(this.currentQuestion);
+        } else { this.showToast('请输入问题'); }
+    },
+    
+    submitHomeTextQuestion() {
+        const textInput = document.getElementById('home-text-input');
+        if (textInput && textInput.value.trim()) {
+            this.currentQuestion = textInput.value.trim();
+            textInput.value = '';
             this.showToast('正在生成答案...');
             this.generateAIAnswer(this.currentQuestion);
         } else { this.showToast('请输入问题'); }
@@ -580,10 +596,12 @@ const App = {
         const done = this.tasks.filter(t=>t.status==='completed').length;
         const progress = this.tasks.length ? Math.round(done/this.tasks.length*100) : 0;
         const lastMsg = this.messages[this.messages.length-1];
+        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         return `
 <div class="page active">
 <div class="greeting"><div class="greeting-text">${this.getGreeting()}，${this.userData.name} 🌞</div><div class="greeting-date">${this.getDateStr()}</div></div>
 <div class="voice-btn-container"><button class="voice-btn" data-action="start-voice"><span>🎤</span><span class="voice-btn-text">问问题</span></button></div>
+${isMobile?`<div class="card" style="margin-top:12px"><div class="card-title">✏️ 输入问题</div><input type="text" id="home-text-input" placeholder="请输入您的问题..." style="width:100%;padding:16px;font-size:var(--font-body);border:2px solid var(--color-border);border-radius:var(--radius-md);outline:none"><button class="btn btn-primary" id="home-submit-text" style="margin-top:12px">提交问题</button></div>`:''}
 <div class="card"><div class="card-title">📋 今日任务（${done}/${this.tasks.length}）</div>${this.tasks.slice(0,3).map(t=>`<div class="task-item" data-action="show-task" data-param="${t.id}"><div class="task-status ${t.status==='completed'?'completed':'pending'}">${t.status==='completed'?'✓':'○'}</div><div class="task-content"><div class="task-name">${t.name}</div><div class="task-desc">${t.desc}</div></div></div>`).join('')}<div class="progress-bar"><div class="progress-fill" style="width:${progress}%"></div></div><div class="progress-text">完成进度 ${progress}%</div></div>
 ${lastMsg?`<div class="card message-card"><div class="card-title">💬 子女留言</div><div class="message-content">"${lastMsg.content}"</div><div class="message-action" data-action="play-voice"><span>🔊</span><span>播放语音</span></div></div>`:''}
 <div class="history-section"><div class="history-title">📚 最近问答</div>${this.history.length?this.history.slice(0,3).map(i=>`<div class="history-item" data-action="show-answer"><div class="history-icon">❓</div><div class="history-content"><div class="history-question">${i.question}</div><div class="history-time">${i.time}</div></div></div>`).join(''):`<div class="empty-state" style="padding:24px;text-align:center"><div class="empty-icon">📝</div><div class="empty-desc">还没有问答记录</div></div>`}</div>
@@ -593,7 +611,21 @@ ${lastMsg?`<div class="card message-card"><div class="card-title">💬 子女留
     
     getVoiceInputPage() {
         const hasSR = !!(window.SpeechRecognition||window.webkitSpeechRecognition);
-        return `<div class="page active"><div class="header"><button class="back-btn" data-action="go-back"><span>←</span><span>返回</span></button></div><div class="status-text" id="voice-status">点击按钮开始说话</div><div class="voice-btn-container"><button class="voice-btn" id="voice-btn"><span>🎤</span><span class="voice-btn-text">点击说话</span></button></div><div class="wave-animation" id="wave-animation"><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div></div><div id="recognized-text" style="text-align:center;font-size:var(--font-body);color:var(--color-text);min-height:60px;padding:16px;background:var(--color-white);border-radius:var(--radius-md);margin:16px 0">识别结果将显示在这里...</div><div class="card" style="margin-top:16px"><div class="card-title">✏️ 或者输入文字</div><input type="text" id="text-input" placeholder="请输入您的问题..." style="width:100%;padding:16px;font-size:var(--font-body);border:2px solid var(--color-border);border-radius:var(--radius-md);outline:none"><button class="btn btn-primary" id="submit-text" style="margin-top:12px">提交问题</button></div>${!hasSR?`<div style="text-align:center;padding:16px;background:#FFF0F0;border-radius:var(--radius-md);margin-top:16px;border:2px solid var(--color-error)"><p style="color:var(--color-error)">⚠️ 您的浏览器不支持语音识别</p><p style="color:var(--color-text-light);font-size:var(--font-small)">请使用 Chrome、Edge 或 Safari 浏览器</p></div>`:`<div style="text-align:center;padding:12px;color:var(--color-text-light);font-size:var(--font-small)">💡 提示：点击按钮开始录音，说完后自动识别</div>`}</div>`;
+        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const isWeChat = /MicroMessenger/i.test(navigator.userAgent);
+        
+        let warningHtml = '';
+        if (!hasSR) {
+            if (isMobile) {
+                warningHtml = `<div style="text-align:center;padding:16px;background:#FFF8E1;border-radius:var(--radius-md);margin-top:16px;border:2px solid #FFA726"><p style="color:#E65100">📱 移动端建议</p><p style="color:var(--color-text-light);font-size:var(--font-small)">${isWeChat?'请使用手机浏览器（如Chrome、Edge、Safari）打开':'请使用Chrome、Edge或Safari浏览器'}</p><p style="color:var(--color-text-light);font-size:var(--font-small)">也可以直接使用下方的文字输入功能</p></div>`;
+            } else {
+                warningHtml = `<div style="text-align:center;padding:16px;background:#FFF0F0;border-radius:var(--radius-md);margin-top:16px;border:2px solid var(--color-error)"><p style="color:var(--color-error)">⚠️ 您的浏览器不支持语音识别</p><p style="color:var(--color-text-light);font-size:var(--font-small)">请使用 Chrome、Edge 或 Safari 浏览器</p></div>`;
+            }
+        } else if (isMobile) {
+            warningHtml = `<div style="text-align:center;padding:12px;background:#E8F5E9;border-radius:var(--radius-md);margin-top:12px;border:2px solid #4CAF50"><p style="color:#2E7D32">💡 移动端提示</p><p style="color:var(--color-text-light);font-size:var(--font-small)">如语音识别不稳定，请使用下方的文字输入</p></div>`;
+        }
+        
+        return `<div class="page active"><div class="header"><button class="back-btn" data-action="go-back"><span>←</span><span>返回</span></button></div><div class="status-text" id="voice-status">点击按钮开始说话</div><div class="voice-btn-container"><button class="voice-btn" id="voice-btn"><span>🎤</span><span class="voice-btn-text">点击说话</span></button></div><div class="wave-animation" id="wave-animation"><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div></div><div id="recognized-text" style="text-align:center;font-size:var(--font-body);color:var(--color-text);min-height:60px;padding:16px;background:var(--color-white);border-radius:var(--radius-md);margin:16px 0">识别结果将显示在这里...</div><div class="card" style="margin-top:16px"><div class="card-title">✏️ 输入文字</div><input type="text" id="text-input" placeholder="请输入您的问题..." style="width:100%;padding:16px;font-size:var(--font-body);border:2px solid var(--color-border);border-radius:var(--radius-md);outline:none"><button class="btn btn-primary" id="submit-text" style="margin-top:12px">提交问题</button></div>${warningHtml}</div>`;
     },
     
     getAnswerPage() {

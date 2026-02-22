@@ -5,8 +5,8 @@ const Config = {
     defaultAccounts: [
         { id: 1, username: '奶奶', password: '123456', role: 'elder', avatar: '👩', childName: '小宝' },
         { id: 2, username: '爷爷', password: '123456', role: 'elder', avatar: '👨', childName: '小明' },
-        { id: 3, username: '女儿', password: '123456', role: 'child', avatar: '👩‍💼', parentName: '奶奶', parentId: 1 },
-        { id: 4, username: '儿子', password: '123456', role: 'child', avatar: '👨‍💼', parentName: '爷爷', parentId: 2 }
+        { id: 3, username: '妈妈', password: '123456', role: 'child', avatar: '👩‍💼', parentIds: [1, 2] },
+        { id: 4, username: '爸爸', password: '123456', role: 'child', avatar: '👨‍💼', parentIds: [1, 2] }
     ],
     
     setApiKey(key) {
