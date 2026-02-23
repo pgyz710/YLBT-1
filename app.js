@@ -21,6 +21,38 @@ const App = {
     learningStats: { totalQuestions: 0, streak: 0, lastDate: null, badges: [] },
     messages: [],
     selectedCategory: '语文',
+    communityPartners: [],
+    familyActivities: [],
+    healthRecords: [],
+    timeBank: { hours: 0, records: [] },
+    growthBank: { points: 0, records: [] },
+    familyPoints: { points: 0, badges: [] },
+    allBadges: [
+        { id: 1, name: '初识陪伴', icon: '🌱', desc: '完成第一个任务', requirement: '完成1个任务', unlocked: false },
+        { id: 2, name: '学习达人', icon: '📚', desc: '连续学习7天', requirement: '连续7天学习', unlocked: false },
+        { id: 3, name: '亲情满满', icon: '❤️', desc: '获得100亲情积分', requirement: '获得100亲情积分', unlocked: false },
+        { id: 4, name: '时光守护者', icon: '⏰', desc: '存入10小时时间', requirement: '存入10小时时间', unlocked: false },
+        { id: 5, name: '成长之星', icon: '⭐', desc: '获得500成长积分', requirement: '获得500成长积分', unlocked: false },
+        { id: 6, name: '代际传承', icon: '👨‍👩‍👧‍👦', desc: '解锁所有徽章', requirement: '解锁所有徽章', unlocked: false }
+    ],
+    
+    defaultCommunityPartners: [
+        { id: 1, name: '张阿姨', avatar: '👩', role: '邻居', distance: '50米', phone: '138****1234', available: true },
+        { id: 2, name: '李医生', avatar: '👨‍⚕️', role: '社区医生', distance: '200米', phone: '139****5678', available: true },
+        { id: 3, name: '王师傅', avatar: '👷', role: '物业维修', distance: '100米', phone: '137****9012', available: true },
+        { id: 4, name: '陈老师', avatar: '👩‍🏫', role: '志愿者', distance: '150米', phone: '136****3456', available: true }
+    ],
+    
+    defaultFamilyActivities: [
+        { id: 1, time: '今天 09:30', content: '爷爷教小明写书法', type: '学习', icon: '✍️' },
+        { id: 2, time: '今天 14:00', content: '一起包了饺子', type: '生活', icon: '🥟' },
+        { id: 3, time: '昨天 16:00', content: '在公园散步', type: '活动', icon: '🚶' }
+    ],
+    
+    defaultHealthRecords: [
+        { id: 1, date: '今天', elder: '血压正常: 120/80', child: '身高: 110cm, 体重: 18kg' },
+        { id: 2, date: '昨天', elder: '心率正常: 72次/分', child: '体温正常: 36.5°C' }
+    ],
     
     defaultTasks: [
         { id: 1, name: '背古诗《春晓》', status: 'pending', desc: '和小宝一起背诵古诗', category: '语文', difficulty: '简单', createdBy: 'child' },
@@ -128,11 +160,26 @@ const App = {
                 this.history = data.history || [];
                 this.learningStats = data.learningStats || this.learningStats;
                 this.messages = data.messages || [];
+                this.communityPartners = data.communityPartners || [...this.defaultCommunityPartners];
+                this.familyActivities = data.familyActivities || [...this.defaultFamilyActivities];
+                this.healthRecords = data.healthRecords || [...this.defaultHealthRecords];
+                this.timeBank = data.timeBank || { hours: 0, records: [] };
+                this.growthBank = data.growthBank || { points: 0, records: [] };
+                this.familyPoints = data.familyPoints || { points: 0, badges: [] };
+                this.allBadges = data.allBadges || [...this.allBadges];
             } else {
                 this.tasks = [...this.defaultTasks];
                 this.activities = [...this.defaultActivities];
+                this.communityPartners = [...this.defaultCommunityPartners];
+                this.familyActivities = [...this.defaultFamilyActivities];
+                this.healthRecords = [...this.defaultHealthRecords];
             }
-        } catch (e) { this.tasks = [...this.defaultTasks]; }
+        } catch (e) { 
+            this.tasks = [...this.defaultTasks];
+            this.communityPartners = [...this.defaultCommunityPartners];
+            this.familyActivities = [...this.defaultFamilyActivities];
+            this.healthRecords = [...this.defaultHealthRecords];
+        }
     },
     
     loadChildData() {
@@ -144,8 +191,25 @@ const App = {
                 this.history = data.history || [];
                 this.learningStats = data.learningStats || this.learningStats;
                 this.messages = data.messages || [];
-            } else { this.tasks = [...this.defaultTasks]; }
-        } catch (e) { this.tasks = [...this.defaultTasks]; }
+                this.communityPartners = data.communityPartners || [...this.defaultCommunityPartners];
+                this.familyActivities = data.familyActivities || [...this.defaultFamilyActivities];
+                this.healthRecords = data.healthRecords || [...this.defaultHealthRecords];
+                this.timeBank = data.timeBank || { hours: 0, records: [] };
+                this.growthBank = data.growthBank || { points: 0, records: [] };
+                this.familyPoints = data.familyPoints || { points: 0, badges: [] };
+                this.allBadges = data.allBadges || [...this.allBadges];
+            } else { 
+                this.tasks = [...this.defaultTasks];
+                this.communityPartners = [...this.defaultCommunityPartners];
+                this.familyActivities = [...this.defaultFamilyActivities];
+                this.healthRecords = [...this.defaultHealthRecords];
+            }
+        } catch (e) { 
+            this.tasks = [...this.defaultTasks];
+            this.communityPartners = [...this.defaultCommunityPartners];
+            this.familyActivities = [...this.defaultFamilyActivities];
+            this.healthRecords = [...this.defaultHealthRecords];
+        }
     },
     
     saveData() {
@@ -153,7 +217,14 @@ const App = {
             localStorage.setItem('ylbt_elder_data', JSON.stringify({
                 userData: this.userData, tasks: this.tasks, activities: this.activities,
                 myActivities: this.myActivities, history: this.history,
-                learningStats: this.learningStats, messages: this.messages
+                learningStats: this.learningStats, messages: this.messages,
+                communityPartners: this.communityPartners,
+                familyActivities: this.familyActivities,
+                healthRecords: this.healthRecords,
+                timeBank: this.timeBank,
+                growthBank: this.growthBank,
+                familyPoints: this.familyPoints,
+                allBadges: this.allBadges
             }));
         } catch (e) { console.error('保存数据失败:', e); }
     },
@@ -190,15 +261,31 @@ const App = {
     
     getPageContent(page) {
         if (this.userRole === 'child') {
-            const childPages = { 'home': this.getChildHomePage(), 'tasks': this.getChildTasksPage(), 'activities': this.getChildActivitiesPage(), 'profile': this.getChildProfilePage() };
+            const childPages = { 
+                'home': this.getChildHomePage(), 
+                'tasks': this.getChildTasksPage(), 
+                'community': this.getChildCommunityPage(),
+                'activities': this.getChildActivitiesPage(), 
+                'bank': this.getBankPage(),
+                'profile': this.getChildProfilePage() 
+            };
             return childPages[page] || childPages['home'];
         }
         const pages = {
-            'home': this.getHomePage(), 'voice-input': this.getVoiceInputPage(), 'answer': this.getAnswerPage(),
-            'share': this.getSharePage(), 'tasks': this.getTasksPage(), 'task-detail': this.getTaskDetailPage(),
-            'task-complete': this.getTaskCompletePage(), 'achievement': this.getAchievementPage(),
-            'activities': this.getActivitiesPage(), 'activity-detail': this.getActivityDetailPage(),
-            'my-activities': this.getMyActivitiesPage(), 'profile': this.getProfilePage()
+            'home': this.getHomePage(), 
+            'voice-input': this.getVoiceInputPage(), 
+            'answer': this.getAnswerPage(),
+            'share': this.getSharePage(), 
+            'tasks': this.getTasksPage(), 
+            'task-detail': this.getTaskDetailPage(),
+            'task-complete': this.getTaskCompletePage(), 
+            'achievement': this.getAchievementPage(),
+            'activities': this.getActivitiesPage(), 
+            'activity-detail': this.getActivityDetailPage(),
+            'my-activities': this.getMyActivitiesPage(), 
+            'community': this.getCommunityPage(),
+            'bank': this.getBankPage(),
+            'profile': this.getProfilePage()
         };
         return pages[page] || pages['home'];
     },
@@ -237,6 +324,35 @@ const App = {
         if (nameInput) { nameInput.value = this.userData.name; nameInput.addEventListener('change', (e) => { this.userData.name = e.target.value; this.saveData(); this.showToast('已保存'); }); }
         const childNameInput = document.getElementById('child-name-input');
         if (childNameInput) { childNameInput.value = this.userData.childName; childNameInput.addEventListener('change', (e) => { this.userData.childName = e.target.value; this.saveData(); this.showToast('已保存'); }); }
+        const sosBtn = document.getElementById('sos-btn');
+        if (sosBtn) {
+            let pressTimer = null;
+            sosBtn.addEventListener('mousedown', () => {
+                pressTimer = setTimeout(() => { this.triggerSOS(); }, 3000);
+            });
+            sosBtn.addEventListener('mouseup', () => { if (pressTimer) { clearTimeout(pressTimer); } });
+            sosBtn.addEventListener('mouseleave', () => { if (pressTimer) { clearTimeout(pressTimer); } });
+            sosBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                pressTimer = setTimeout(() => { this.triggerSOS(); }, 3000);
+            });
+            sosBtn.addEventListener('touchend', () => { if (pressTimer) { clearTimeout(pressTimer); } });
+        }
+    },
+    
+    callCommunityPartner(phone) {
+        if (!phone) { this.showToast('正在连接社区...'); return; }
+        if (phone.startsWith('tel:')) {
+            window.location.href = phone;
+        } else {
+            window.location.href = `tel:${phone.replace(/\*/g, '0')}`;
+        }
+        this.showToast('正在呼叫...');
+    },
+    
+    triggerSOS() {
+        this.showToast('🚨 正在呼叫紧急联系人！');
+        if (navigator.vibrate) navigator.vibrate(200);
     },
     
     async toggleVoiceRecording() { if (this.isRecording) this.stopVoiceRecording(); else await this.startVoiceRecording(); },
@@ -459,16 +575,80 @@ const App = {
             case 'clear-history': this.history = []; this.saveData(); this.showToast('已清空'); this.showPage('profile'); break;
             case 'logout': this.handleLogout(); break;
             case 'delete-task': this.tasks = this.tasks.filter(t => t.id !== parseInt(param)); this.saveData(); this.showToast('已删除'); this.showPage('tasks'); break;
+            case 'call-partner': this.callCommunityPartner(param); break;
         }
     },
     
     completeCurrentTask() {
         if (this.currentTask) {
             const task = this.tasks.find(t => t.id === this.currentTask.id);
-            if (task) { task.status = 'completed'; this.saveData(); }
+            if (task) { 
+                task.status = 'completed'; 
+                this.addTaskRewards(task);
+                this.saveData(); 
+            }
         }
         this.showToast('任务完成！');
         setTimeout(() => this.showPage('achievement'), 1000);
+    },
+    
+    addTaskRewards(task) {
+        let growthPoints = 10;
+        let familyPoints = 5;
+        let timeHours = 0.5;
+        
+        if (task.difficulty === '中等') {
+            growthPoints = 20;
+            familyPoints = 10;
+            timeHours = 1;
+        } else if (task.difficulty === '困难') {
+            growthPoints = 30;
+            familyPoints = 15;
+            timeHours = 1.5;
+        }
+        
+        this.growthBank.points += growthPoints;
+        this.growthBank.records.unshift({
+            id: Date.now(),
+            type: '任务完成',
+            points: growthPoints,
+            desc: `完成任务：${task.name}`,
+            time: new Date().toLocaleTimeString()
+        });
+        
+        this.familyPoints.points += familyPoints;
+        
+        this.timeBank.hours += timeHours;
+        this.timeBank.records.unshift({
+            id: Date.now(),
+            type: '陪伴时长',
+            hours: timeHours,
+            desc: `陪伴完成：${task.name}`,
+            time: new Date().toLocaleTimeString()
+        });
+        
+        this.checkBadges();
+    },
+    
+    checkBadges() {
+        const doneCount = this.tasks.filter(t => t.status === 'completed').length;
+        if (doneCount >= 1) this.unlockBadge(1);
+        if (this.learningStats.streak >= 7) this.unlockBadge(2);
+        if (this.familyPoints.points >= 100) this.unlockBadge(3);
+        if (this.timeBank.hours >= 10) this.unlockBadge(4);
+        if (this.growthBank.points >= 500) this.unlockBadge(5);
+        
+        const unlockedCount = this.allBadges.filter(b => b.unlocked).length;
+        if (unlockedCount >= 5) this.unlockBadge(6);
+    },
+    
+    unlockBadge(badgeId) {
+        const badge = this.allBadges.find(b => b.id === badgeId);
+        if (badge && !badge.unlocked) {
+            badge.unlocked = true;
+            this.familyPoints.badges.push(badgeId);
+            this.showToast(`🎉 解锁徽章：${badge.name}！`, 3000);
+        }
     },
     
     joinActivity() {
@@ -547,11 +727,11 @@ const App = {
         return `${d.getMonth() + 1}月${d.getDate()}日 星期${'日一二三四五六'[d.getDay()]}`;
     },
     
-    showToast(msg) {
+    showToast(msg, duration) {
         let toast = document.querySelector('.toast');
         if (!toast) { toast = document.createElement('div'); toast.className = 'toast'; document.body.appendChild(toast); }
         toast.textContent = msg; toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 2000);
+        setTimeout(() => toast.classList.remove('show'), duration || 2000);
     },
     
     getChildHomePage() {
@@ -678,6 +858,87 @@ ${lastMsg?`<div class="card message-card"><div class="card-title">💬 子女留
     
     getProfilePage() {
         return `<div class="page active"><div class="profile-header"><div class="profile-avatar">${this.userData.avatar}</div><div class="profile-name">${this.userData.name}</div><div class="profile-desc">和${this.userData.childName}一起成长</div></div><div class="stats-card"><div class="stat-row"><div class="stat-item-large"><div class="stat-value">${this.learningStats.streak}</div><div class="stat-label">连续学习天数</div></div><div class="stat-item-large"><div class="stat-value">${this.learningStats.totalQuestions}</div><div class="stat-label">累计学习次数</div></div></div></div><div class="settings-group"><div class="settings-group-title">个人信息</div><div class="settings-item"><div class="settings-label"><span class="settings-icon">👤</span><span>我的名字</span></div><input type="text" id="user-name-input" style="border:none;text-align:right;font-size:16px;width:120px"></div><div class="settings-item"><div class="settings-label"><span class="settings-icon">👶</span><span>孩子名字</span></div><input type="text" id="child-name-input" style="border:none;text-align:right;font-size:16px;width:120px"></div></div><div class="settings-group"><div class="settings-group-title">数据管理</div><div class="settings-item" data-action="clear-history"><div class="settings-label"><span class="settings-icon">🗑️</span><span>清空历史</span></div><span style="color:var(--color-text-light)">→</span></div></div><div class="settings-group"><div class="settings-group-title">账号</div><div class="settings-item" data-action="logout"><div class="settings-label"><span class="settings-icon">🚪</span><span>退出登录</span></div><span style="color:var(--color-text-light)">→</span></div></div></div>`;
+    },
+    
+    getCommunityPage() {
+        return `
+<div class="page active">
+<div class="header"><div class="header-title">🏘️ 社区服务</div></div>
+<div class="card"><div class="card-title">🚨 应急呼叫</div><button class="btn btn-danger btn-lg" id="sos-btn" style="width:100%;padding:24px;font-size:24px">🆘 一键呼叫</button><p style="text-align:center;color:var(--color-text-light);margin-top:8px;font-size:14px">紧急情况长按3秒</p></div>
+<div class="card"><div class="card-title">🤝 社区伙伴</div>${this.communityPartners.map(p=>`<div class="community-partner"><div class="partner-avatar">${p.avatar}</div><div class="partner-info"><div class="partner-name">${p.name}</div><div class="partner-role">${p.role}</div><div class="partner-distance">📍 ${p.distance}</div></div>${p.available?'<span class="status-badge online">在线</span>':'<span class="status-badge">离线</span>'}<button class="btn btn-small" data-action="call-partner" data-param="${p.phone}">呼叫</button></div>`).join('')}</div>
+<div class="card"><div class="card-title">🏠 服务驿站</div><div class="service-grid"><div class="service-item"><div class="service-icon">🏥</div><div class="service-name">健康监测</div></div><div class="service-item"><div class="service-icon">👶</div><div class="service-name">临时托管</div></div><div class="service-item"><div class="service-icon">📚</div><div class="service-name">共享图书</div></div><div class="service-item"><div class="service-icon">🧸</div><div class="service-name">共享玩具</div></div></div></div>
+<div class="card"><div class="card-title">💊 健康记录</div>${this.healthRecords.map(r=>`<div class="health-record"><div class="health-date">${r.date}</div><div class="health-detail"><p>👵 ${r.elder}</p><p>👶 ${r.child}</p></div></div>`).join('')}</div>
+</div>`;
+    },
+    
+    getChildCommunityPage() {
+        return `
+<div class="page active">
+<div class="header"><div class="header-title">📡 亲情连线</div></div>
+<div class="card"><div class="card-title">📋 今日共学</div>${this.familyActivities.map(a=>`<div class="family-activity"><div class="activity-icon">${a.icon}</div><div class="activity-info"><div class="activity-time">${a.time}</div><div class="activity-content">${a.content}</div></div></div>`).join('')}</div>
+<div class="card"><div class="card-title">💊 健康数据</div>${this.healthRecords.map(r=>`<div class="health-record"><div class="health-date">${r.date}</div><div class="health-detail"><p>👵 ${r.elder}</p><p>👶 ${r.child}</p></div></div>`).join('')}</div>
+<div class="card"><div class="card-title">📍 服务状态</div><div class="status-list"><div class="status-item"><div class="status-icon">✅</div><div class="status-text">社区服务正常</div></div><div class="status-item"><div class="status-icon">✅</div><div class="status-text">服务驿站开放中</div></div><div class="status-item"><div class="status-icon">✅</div><div class="status-text">社区伙伴在线</div></div></div></div>
+<div class="card"><div class="card-title">📞 紧急联系</div>${this.communityPartners.filter(p=>['社区医生','物业维修'].includes(p.role)).map(p=>`<div class="community-partner"><div class="partner-avatar">${p.avatar}</div><div class="partner-info"><div class="partner-name">${p.name}</div><div class="partner-role">${p.role}</div></div><button class="btn btn-small" data-action="call-partner" data-param="${p.phone}">呼叫</button></div>`).join('')}</div>
+</div>`;
+    },
+    
+    getBankPage() {
+        const unlockedBadges = this.allBadges.filter(b => b.unlocked);
+        return `
+<div class="page active">
+<div class="header"><div class="header-title">🏦 双账户中心</div></div>
+<div class="bank-cards">
+    <div class="bank-card time-bank">
+        <div class="bank-icon">⏰</div>
+        <div class="bank-title">时间银行</div>
+        <div class="bank-value">${this.timeBank.hours.toFixed(1)} 小时</div>
+        <div class="bank-desc">陪伴时长可兑换社区服务</div>
+    </div>
+    <div class="bank-card growth-bank">
+        <div class="bank-icon">⭐</div>
+        <div class="bank-title">成长银行</div>
+        <div class="bank-value">${this.growthBank.points} 积分</div>
+        <div class="bank-desc">完成任务获得成长积分</div>
+    </div>
+</div>
+<div class="card">
+    <div class="card-title">❤️ 亲情积分</div>
+    <div style="text-align:center;padding:24px">
+        <div style="font-size:48px;margin-bottom:8px">${this.familyPoints.points}</div>
+        <div style="color:var(--color-text-light)">解锁徽章：${unlockedBadges.length}/${this.allBadges.length}</div>
+    </div>
+</div>
+<div class="card">
+    <div class="card-title">🏆 荣誉徽章</div>
+    <div class="badge-grid">
+        ${this.allBadges.map(b=>`<div class="badge-item ${b.unlocked?'unlocked':'locked'}">
+            <div class="badge-icon">${b.icon}</div>
+            <div class="badge-name">${b.name}</div>
+            <div class="badge-desc">${b.requirement}</div>
+        </div>`).join('')}
+    </div>
+</div>
+${this.timeBank.records.length?`<div class="card">
+    <div class="card-title">📝 时间记录</div>
+    ${this.timeBank.records.slice(0,5).map(r=>`<div class="record-item">
+        <div class="record-info">
+            <div class="record-title">${r.type}</div>
+            <div class="record-desc">${r.desc}</div>
+        </div>
+        <div class="record-value">+${r.hours}h</div>
+    </div>`).join('')}
+</div>`:''}
+${this.growthBank.records.length?`<div class="card">
+    <div class="card-title">📝 积分记录</div>
+    ${this.growthBank.records.slice(0,5).map(r=>`<div class="record-item">
+        <div class="record-info">
+            <div class="record-title">${r.type}</div>
+            <div class="record-desc">${r.desc}</div>
+        </div>
+        <div class="record-value">+${r.points}</div>
+    </div>`).join('')}
+</div>`:''}
+</div>`;
     }
 };
 

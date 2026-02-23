@@ -1047,6 +1047,132 @@ html, body {
     display: none !important;
 }
 
+.bank-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.bank-card {
+    padding: 24px 16px;
+    border-radius: var(--radius-lg);
+    text-align: center;
+    box-shadow: var(--shadow-card);
+}
+
+.bank-card.time-bank {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.bank-card.growth-bank {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+}
+
+.bank-icon {
+    font-size: 40px;
+    margin-bottom: 8px;
+}
+
+.bank-title {
+    font-size: var(--font-small);
+    opacity: 0.9;
+    margin-bottom: 4px;
+}
+
+.bank-value {
+    font-size: var(--font-title2);
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.bank-desc {
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+.badge-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.badge-item {
+    padding: 16px 8px;
+    text-align: center;
+    border-radius: var(--radius-md);
+    transition: all 0.3s ease;
+}
+
+.badge-item.unlocked {
+    background: var(--color-white);
+    box-shadow: var(--shadow-card);
+}
+
+.badge-item.locked {
+    background: var(--color-border);
+    opacity: 0.5;
+}
+
+.badge-icon {
+    font-size: 36px;
+    margin-bottom: 8px;
+}
+
+.badge-item.locked .badge-icon {
+    filter: grayscale(100%);
+}
+
+.badge-name {
+    font-size: var(--font-small);
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: 4px;
+}
+
+.badge-item.locked .badge-name {
+    color: var(--color-text-light);
+}
+
+.badge-desc {
+    font-size: 12px;
+    color: var(--color-text-light);
+}
+
+.record-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    background: var(--color-white);
+    border-radius: var(--radius-md);
+    margin-bottom: 12px;
+}
+
+.record-info {
+    flex: 1;
+}
+
+.record-title {
+    font-size: var(--font-body);
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: 4px;
+}
+
+.record-desc {
+    font-size: var(--font-small);
+    color: var(--color-text-light);
+}
+
+.record-value {
+    font-size: var(--font-title2);
+    font-weight: 700;
+    color: var(--color-success);
+}
+
 .stats-row {
     display: flex;
     justify-content: space-around;
@@ -1442,6 +1568,202 @@ html, body {
     border: none;
     border-radius: var(--radius-sm);
     font-size: 14px;
+}
+
+.btn-danger {
+    background: linear-gradient(135deg, #FF6B6B 0%, #EE5A5A 100%);
+    color: white;
+    border: none;
+}
+
+.btn-danger:active {
+    background: linear-gradient(135deg, #EE5A5A 0%, #DD4A4A 100%);
+}
+
+.community-partner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: var(--color-white);
+    border-radius: var(--radius-lg);
+    margin-bottom: 12px;
+}
+
+.partner-avatar {
+    font-size: 40px;
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg);
+    border-radius: 50%;
+}
+
+.partner-info {
+    flex: 1;
+}
+
+.partner-name {
+    font-size: var(--font-body);
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: 4px;
+}
+
+.partner-role {
+    font-size: var(--font-small);
+    color: var(--color-text-light);
+    margin-bottom: 2px;
+}
+
+.partner-distance {
+    font-size: 13px;
+    color: var(--color-primary);
+}
+
+.btn-small {
+    padding: 8px 16px;
+    font-size: 14px;
+    background: var(--color-primary);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+}
+
+.btn-small:active {
+    background: #E85A2B;
+}
+
+.status-badge {
+    padding: 4px 12px;
+    background: var(--color-bg);
+    border-radius: 12px;
+    font-size: 12px;
+    color: var(--color-text-light);
+}
+
+.status-badge.online {
+    background: #E8F5E9;
+    color: #2E7D32;
+}
+
+.service-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.service-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    background: var(--color-white);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.service-item:active {
+    background: var(--color-bg);
+    transform: scale(0.98);
+}
+
+.service-icon {
+    font-size: 40px;
+    margin-bottom: 8px;
+}
+
+.service-name {
+    font-size: var(--font-body);
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.health-record {
+    padding: 16px;
+    background: var(--color-white);
+    border-radius: var(--radius-lg);
+    margin-bottom: 12px;
+}
+
+.health-date {
+    font-size: var(--font-small);
+    color: var(--color-primary);
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.health-detail p {
+    margin: 6px 0;
+    font-size: var(--font-body);
+    color: var(--color-text);
+}
+
+.family-activity {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: var(--color-white);
+    border-radius: var(--radius-lg);
+    margin-bottom: 12px;
+}
+
+.activity-icon {
+    font-size: 32px;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #FFF5EB 0%, #FFE8D6 100%);
+    border-radius: 50%;
+}
+
+.activity-info {
+    flex: 1;
+}
+
+.activity-time {
+    font-size: var(--font-small);
+    color: var(--color-text-light);
+    margin-bottom: 4px;
+}
+
+.activity-content {
+    font-size: var(--font-body);
+    color: var(--color-text);
+    font-weight: 500;
+}
+
+.status-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.status-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: var(--color-white);
+    border-radius: var(--radius-lg);
+}
+
+.status-icon {
+    font-size: 24px;
+}
+
+.status-text {
+    font-size: var(--font-body);
+    color: var(--color-text);
+    font-weight: 500;
+}
     cursor: pointer;
 }
 
