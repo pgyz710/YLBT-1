@@ -338,6 +338,21 @@ const App = {
             });
             sosBtn.addEventListener('touchend', () => { if (pressTimer) { clearTimeout(pressTimer); } });
         }
+        
+        const photoUpload = document.getElementById('photo-upload');
+        if (photoUpload) {
+            photoUpload.addEventListener('click', () => this.takePhoto());
+        }
+        
+        const galleryUpload = document.getElementById('gallery-upload');
+        if (galleryUpload) {
+            galleryUpload.addEventListener('click', () => this.selectPhotoFromGallery());
+        }
+        
+        const voiceConfirmBtn = document.getElementById('voice-confirm-btn');
+        if (voiceConfirmBtn) {
+            voiceConfirmBtn.addEventListener('click', () => this.voiceConfirmTask());
+        }
     },
     
     callCommunityPartner(phone) {
@@ -939,6 +954,124 @@ ${this.growthBank.records.length?`<div class="card">
     </div>`).join('')}
 </div>`:''}
 </div>`;
+    },
+    
+    async takePhoto() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.autoplay = true;
+            
+            const cameraContainer = document.getElementById('camera-container');
+            if (cameraContainer) {
+                cameraContainer.innerHTML = '';
+                cameraContainer.appendChild(video);
+                
+                const captureBtn = document.createElement('button');
+                captureBtn.className = 'btn btn-primary btn-lg';
+                captureBtn.textContent = '📸 拍照';
+                captureBtn.style.marginTop = '16px';
+                captureBtn.addEventListener('click', () => this.capturePhoto(video, stream));
+                cameraContainer.appendChild(captureBtn);
+            }
+        } catch (error) {
+            this.showToast('无法访问相机，请检查权限');
+            console.error('相机访问错误:', error);
+        }
+    },
+    
+    capturePhoto(video, stream) {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        this.capturedPhoto = canvas.toDataURL('image/jpeg');
+        
+        stream.getTracks().forEach(track => track.stop());
+        
+        const cameraContainer = document.getElementById('camera-container');
+        if (cameraContainer) {
+            cameraContainer.innerHTML = `
+                <div class="photo-preview">
+                    <img src="${this.capturedPhoto}" style="width:100%;border-radius:var(--radius-md);margin-bottom:16px">
+                    <button class="btn btn-primary" onclick="App.completeCurrentTask()" style="margin-right:8px">确认完成</button>
+                    <button class="btn btn-outline" onclick="App.showPage('task-complete')">重新拍照</button>
+                </div>
+            `;
+        }
+        
+        this.showToast('照片已拍摄');
+    },
+    
+    selectPhotoFromGallery() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.capture = 'camera';
+        
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    this.capturedPhoto = event.target.result;
+                    
+                    const cameraContainer = document.getElementById('camera-container');
+                    if (cameraContainer) {
+                        cameraContainer.innerHTML = `
+                            <div class="photo-preview">
+                                <img src="${this.capturedPhoto}" style="width:100%;border-radius:var(--radius-md);margin-bottom:16px">
+                                <button class="btn btn-primary" onclick="App.completeCurrentTask()" style="margin-right:8px">确认完成</button>
+                                <button class="btn btn-outline" onclick="App.showPage('task-complete')">重新选择</button>
+                            </div>
+                        `;
+                    }
+                    
+                    this.showToast('照片已选择');
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+        
+        input.click();
+    },
+    
+    async voiceConfirmTask() {
+        this.showToast('请说"完成了"来确认任务');
+        
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            this.showToast('您的浏览器不支持语音识别');
+            return;
+        }
+        
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'zh-CN';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            if (transcript.includes('完成了') || transcript.includes('完成') || transcript.includes('好了')) {
+                this.showToast('任务已确认！');
+                this.completeCurrentTask();
+            } else {
+                this.showToast('请说"完成了"');
+            }
+        };
+        
+        recognition.onerror = () => {
+            this.showToast('语音识别失败，请重试');
+        };
+        
+        try {
+            await recognition.start();
+        } catch (error) {
+            this.showToast('无法启动语音识别，请检查权限');
+        }
     }
 };
 
