@@ -27,6 +27,11 @@ const App = {
     timeBank: { hours: 0, records: [] },
     growthBank: { points: 0, records: [] },
     familyPoints: { points: 0, badges: [] },
+    localWhisper: null,
+    whisperLoading: false,
+    audioContext: null,
+    mediaRecorder: null,
+    audioChunks: [],
     allBadges: [
         { id: 1, name: '初识陪伴', icon: '🌱', desc: '完成第一个任务', requirement: '完成1个任务', unlocked: false },
         { id: 2, name: '学习达人', icon: '📚', desc: '连续学习7天', requirement: '连续7天学习', unlocked: false },
@@ -67,8 +72,29 @@ const App = {
     ],
     
     init() {
+        this.checkBrowserSupport();
         this.checkLogin();
         this.bindLoginEvents();
+    },
+    
+    checkBrowserSupport() {
+        // 检查语音识别支持
+        const hasSpeechRecognition = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+        const hasGetUserMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+        const isSecureContext = window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        
+        this.browserSupport = {
+            speechRecognition: hasSpeechRecognition,
+            getUserMedia: hasGetUserMedia,
+            secureContext: isSecureContext
+        };
+        
+        console.log('浏览器支持检测:', this.browserSupport);
+        
+        // 如果不支持语音识别，显示提示
+        if (!hasSpeechRecognition && !isSecureContext) {
+            console.warn('语音功能需要HTTPS安全连接');
+        }
     },
     
     checkLogin() {
@@ -370,115 +396,222 @@ const App = {
         if (navigator.vibrate) navigator.vibrate(200);
     },
     
-    async toggleVoiceRecording() { if (this.isRecording) this.stopVoiceRecording(); else await this.startVoiceRecording(); },
+    async toggleVoiceRecording() { 
+        if (this.isRecording) {
+            this.stopVoiceRecording();
+        } else {
+            await this.startLocalVoiceRecording();
+        }
+    },
     
-    async startVoiceRecording() {
+    async loadWhisperModel(statusText) {
+        if (this.localWhisper) return this.localWhisper;
+        if (this.whisperLoading) {
+            if (statusText) statusText.textContent = '模型加载中，请稍候...';
+            return null;
+        }
+        
+        try {
+            this.whisperLoading = true;
+            if (statusText) statusText.textContent = '首次使用需下载语音模型(约75MB)...';
+            
+            const pipeline = window.transformersPipeline;
+            if (!pipeline) {
+                throw new Error('transformers.js 未加载');
+            }
+            
+            this.localWhisper = await pipeline('automatic-speech-recognition', 'Xenova/whisper-small');
+            this.whisperLoading = false;
+            return this.localWhisper;
+        } catch (error) {
+            this.whisperLoading = false;
+            console.error('加载Whisper模型失败:', error);
+            return null;
+        }
+    },
+    
+    async startLocalVoiceRecording() {
         const voiceBtn = document.getElementById('voice-btn');
         const statusText = document.getElementById('voice-status');
         const recognizedText = document.getElementById('recognized-text');
         const waveAnimation = document.getElementById('wave-animation');
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         
-        if (!SpeechRecognition) {
-            this.showToast('您的浏览器不支持语音识别，请使用Chrome或Edge');
-            if (statusText) statusText.textContent = '浏览器不支持语音识别';
+        // 检查是否为HTTPS或localhost
+        const isSecureContext = window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        if (!isSecureContext) {
+            this.showToast('语音功能需要HTTPS安全连接');
+            if (statusText) statusText.textContent = '需要HTTPS安全连接';
             return;
         }
         
+        // 请求麦克风权限
+        let stream;
         try {
             if (statusText) statusText.textContent = '正在请求麦克风权限...';
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            stream.getTracks().forEach(track => track.stop());
+            stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    sampleRate: 16000
+                } 
+            });
         } catch (err) {
             let errorMsg = '无法访问麦克风';
-            if (err.name === 'NotAllowedError') errorMsg = '请点击地址栏左侧，允许麦克风权限';
-            else if (err.name === 'NotFoundError') errorMsg = '未找到麦克风设备';
+            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                errorMsg = '请允许麦克风权限：点击地址栏左侧的锁形图标，选择"允许"';
+            } else if (err.name === 'NotFoundError') {
+                errorMsg = '未找到麦克风设备';
+            } else if (err.name === 'NotReadableError') {
+                errorMsg = '麦克风被其他应用占用';
+            }
             if (statusText) statusText.textContent = errorMsg;
-            this.showToast(errorMsg);
+            this.showToast(errorMsg, 4000);
             return;
         }
         
         this.isRecording = true;
+        this.recognitionStopped = false;
         this.currentQuestion = '';
+        this.audioChunks = [];
         
+        // 更新UI
         if (voiceBtn) {
             voiceBtn.classList.add('recording');
-            voiceBtn.innerHTML = '<span>⏹️</span><span class="voice-btn-text">停止</span>';
+            voiceBtn.innerHTML = '<span>⏹️</span><span class="voice-btn-text">点击停止</span>';
         }
-        if (statusText) statusText.textContent = '正在聆听...';
+        if (statusText) statusText.textContent = '正在聆听，请说话...';
         if (recognizedText) recognizedText.textContent = '请说话...';
         if (waveAnimation) waveAnimation.classList.add('active');
         
-        this.recognition = new SpeechRecognition();
-        this.recognition.lang = 'zh-CN';
-        
-        if (isMobile) {
-            this.recognition.continuous = false;
-            this.recognition.interimResults = true;
-            this.recognition.maxAlternatives = 3;
-        } else {
-            this.recognition.continuous = false;
-            this.recognition.interimResults = false;
-            this.recognition.maxAlternatives = 1;
-        }
-        
-        let finalTranscript = '';
-        let interimTranscript = '';
-        
-        this.recognition.onresult = (event) => {
-            interimTranscript = '';
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-                if (event.results[i].isFinal) {
-                    finalTranscript += event.results[i][0].transcript;
-                } else {
-                    interimTranscript += event.results[i][0].transcript;
-                }
-            }
-            if (recognizedText) {
-                recognizedText.textContent = finalTranscript || interimTranscript || '正在识别...';
-            }
-        };
-        
-        this.recognition.onerror = (event) => {
-            let errorMsg = '识别出错，请重试';
-            if (event.error === 'no-speech') errorMsg = '没有检测到语音，请重试';
-            else if (event.error === 'network') errorMsg = '网络错误，请检查网络连接';
-            else if (event.error === 'not-allowed') errorMsg = '麦克风权限被拒绝';
-            else if (event.error === 'audio-capture') errorMsg = '未找到麦克风';
-            
-            if (statusText) statusText.textContent = errorMsg;
-            this.showToast(errorMsg);
-            this.resetVoiceUI(voiceBtn, statusText, recognizedText, waveAnimation);
-            this.isRecording = false;
-        };
-        
-        this.recognition.onend = () => {
-            if (!this.isRecording) return;
-            this.isRecording = false;
-            this.resetVoiceUI(voiceBtn, statusText, recognizedText, waveAnimation);
-            
-            if (finalTranscript && finalTranscript.trim()) {
-                this.currentQuestion = finalTranscript.trim();
-                if (statusText) statusText.textContent = '识别完成！';
-                this.showToast('识别成功！');
-                setTimeout(() => this.generateAIAnswer(this.currentQuestion), 800);
-            } else if (interimTranscript && interimTranscript.trim()) {
-                this.currentQuestion = interimTranscript.trim();
-                if (statusText) statusText.textContent = '识别完成！';
-                this.showToast('识别成功！');
-                setTimeout(() => this.generateAIAnswer(this.currentQuestion), 800);
-            } else {
-                if (statusText) statusText.textContent = '没有识别到内容，请重试';
-            }
-        };
-        
+        // 创建AudioContext和MediaRecorder
         try {
-            this.recognition.start();
-        } catch (err) {
-            this.showToast('启动语音识别失败');
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            const source = this.audioContext.createMediaStreamSource(stream);
+            
+            // 使用MediaRecorder录制音频
+            this.mediaRecorder = new MediaRecorder(stream);
+            
+            this.mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    this.audioChunks.push(event.data);
+                }
+            };
+            
+            this.mediaRecorder.onstop = async () => {
+                stream.getTracks().forEach(track => track.stop());
+                
+                if (this.recognitionStopped) return;
+                
+                // 处理录制的音频
+                if (statusText) statusText.textContent = '正在识别语音...';
+                
+                try {
+                    const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+                    const arrayBuffer = await audioBlob.arrayBuffer();
+                    const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+                    
+                    // 转换为16kHz单声道PCM
+                    const audioData = audioBuffer.getChannelData(0);
+                    
+                    // 使用本地Whisper模型识别
+                    const result = await this.transcribeAudio(audioData, statusText);
+                    
+                    if (result && result.trim()) {
+                        this.currentQuestion = result.trim();
+                        if (recognizedText) recognizedText.textContent = result;
+                        if (statusText) statusText.textContent = '识别完成！';
+                        this.showToast('识别成功！');
+                        setTimeout(() => this.generateAIAnswer(this.currentQuestion), 500);
+                    } else {
+                        if (statusText) statusText.textContent = '没有识别到内容，请重试';
+                        this.showToast('没有识别到内容');
+                    }
+                } catch (error) {
+                    console.error('语音识别错误:', error);
+                    if (statusText) statusText.textContent = '识别失败，请重试';
+                    this.showToast('识别失败，请重试');
+                }
+                
+                this.isRecording = false;
+                this.resetVoiceUI(voiceBtn, statusText, recognizedText, waveAnimation);
+            };
+            
+            this.mediaRecorder.start();
+            
+            // 最多录制30秒
+            setTimeout(() => {
+                if (this.isRecording && this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+                    this.stopVoiceRecording();
+                }
+            }, 30000);
+            
+        } catch (error) {
+            console.error('录音启动失败:', error);
+            this.showToast('录音启动失败，请重试');
             this.isRecording = false;
+            this.resetVoiceUI(voiceBtn, statusText, recognizedText, waveAnimation);
+            stream.getTracks().forEach(track => track.stop());
         }
+    },
+    
+    async transcribeAudio(audioData, statusText) {
+        try {
+            // 加载Whisper模型
+            const whisper = await this.loadWhisperModel(statusText);
+            
+            if (!whisper) {
+                // 如果模型加载失败，尝试使用浏览器内置语音识别
+                return await this.fallbackToWebSpeech(audioData, statusText);
+            }
+            
+            if (statusText) statusText.textContent = '正在本地识别...';
+            
+            // 使用Whisper进行识别
+            const result = await whisper(audioData, {
+                language: 'chinese',
+                task: 'transcribe',
+                chunk_length_s: 30,
+                stride_length_s: 5
+            });
+            
+            return result.text || '';
+        } catch (error) {
+            console.error('Whisper识别失败:', error);
+            return '';
+        }
+    },
+    
+    async fallbackToWebSpeech(audioData, statusText) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            throw new Error('浏览器不支持语音识别');
+        }
+        
+        if (statusText) statusText.textContent = '使用在线识别...';
+        
+        return new Promise((resolve, reject) => {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'zh-CN';
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                resolve(transcript);
+            };
+            
+            recognition.onerror = (event) => {
+                reject(new Error(event.error));
+            };
+            
+            recognition.start();
+            
+            // 5秒超时
+            setTimeout(() => {
+                recognition.stop();
+                reject(new Error('timeout'));
+            }, 5000);
+        });
     },
     
     resetVoiceUI(voiceBtn, statusText, recognizedText, waveAnimation) {
@@ -487,8 +620,34 @@ const App = {
     },
     
     stopVoiceRecording() {
-        this.isRecording = false; this.recognitionStopped = true;
-        if (this.recognition) try { this.recognition.stop(); } catch (e) {}
+        this.isRecording = false;
+        this.recognitionStopped = true;
+        
+        // 停止MediaRecorder
+        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+            try {
+                this.mediaRecorder.stop();
+            } catch (e) {
+                console.error('停止录音失败:', e);
+            }
+        }
+        
+        // 停止旧的语音识别
+        if (this.recognition) {
+            try {
+                this.recognition.stop();
+            } catch (e) {
+                // 忽略停止时的错误
+            }
+        }
+        
+        // 重置UI
+        const voiceBtn = document.getElementById('voice-btn');
+        const statusText = document.getElementById('voice-status');
+        const waveAnimation = document.getElementById('wave-animation');
+        this.resetVoiceUI(voiceBtn, statusText, null, waveAnimation);
+        
+        if (statusText) statusText.textContent = '已停止';
     },
     
     submitTextQuestion() {
